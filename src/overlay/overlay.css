@@ -1,0 +1,109 @@
+/*
+ * src/overlay/overlay.css
+ *
+ * This file is imported as a raw string (?inline) and injected
+ * directly into the Shadow DOM <style> tag. It NEVER goes into
+ * the page's <head>.
+ *
+ * Contains:
+ *  1. Tailwind base reset (scoped to shadow root)
+ *  2. Trace design tokens as CSS custom properties
+ *  3. Inter font import (only loaded once per page via shadow)
+ *
+ * Why not use @tailwind base here?
+ *  The Tailwind base reset affects all elements. Inside Shadow DOM
+ *  that's fine — it can't leak out. But we also can't use the
+ *  Tailwind CLI preprocessor in this context easily, so we
+ *  manually include only what we need.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap');
+
+/* ── Trace design tokens ──────────────────────────────────────── */
+:host {
+  --trace-bg-base:    #0d0f14;
+  --trace-bg-raised:  #141720;
+  --trace-bg-overlay: #1a1d24;
+
+  --trace-border-subtle: rgba(255,255,255,0.06);
+  --trace-border-muted:  rgba(255,255,255,0.10);
+  --trace-border-strong: rgba(255,255,255,0.18);
+
+  --trace-text-primary:   rgba(255,255,255,0.85);
+  --trace-text-secondary: rgba(255,255,255,0.50);
+  --trace-text-muted:     rgba(255,255,255,0.25);
+  --trace-text-ghost:     rgba(255,255,255,0.15);
+
+  --trace-radius-sm: 8px;
+  --trace-radius-md: 12px;
+  --trace-radius-lg: 16px;
+  --trace-radius-xl: 20px;
+
+  /* Provider brand */
+  --trace-chatgpt:    #10b981;
+  --trace-claude:     #f59e0b;
+  --trace-gemini:     #818cf8;
+  --trace-grok:       #9ca3af;
+  --trace-perplexity: #06b6d4;
+  --trace-deepseek:   #3b82f6;
+  --trace-meta:       #1877f2;
+
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Minimal reset (scoped to shadow DOM) ─────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Glass panel base ─────────────────────────────────────────── */
+.trace-glass {
+  background: rgba(20, 23, 32, 0.85);
+  border: 0.5px solid var(--trace-border-muted);
+  border-radius: var(--trace-radius-lg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+/* ── Liquid progress bar ──────────────────────────────────────── */
+.trace-bar-track {
+  height: 4px;
+  background: rgba(255,255,255,0.07);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.trace-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Animations ───────────────────────────────────────────────── */
+@keyframes trace-breathe {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+@keyframes trace-pulse-ring {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50%       { opacity: 0.7;  transform: scale(1.04); }
+}
+
+@keyframes trace-slide-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0);   opacity: 1; }
+}
+
+@keyframes trace-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.trace-breathe     { animation: trace-breathe 2s ease-in-out infinite; }
+.trace-pulse-ring  { animation: trace-pulse-ring 2.5s ease-in-out infinite; }
+.trace-slide-up    { animation: trace-slide-up 0.2s ease-out; }
+.trace-fade-in     { animation: trace-fade-in 0.15s ease-out; }
