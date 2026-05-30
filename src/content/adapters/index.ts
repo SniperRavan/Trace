@@ -1,39 +1,31 @@
 /**
  * src/content/adapters/index.ts
- *
- * Provider adapter factory.
- *
- * Each adapter is responsible for:
- *  - Observing the provider's DOM for message activity
- *  - Estimating token usage from visible content
- *  - Writing usage data to the Zustand store
- *
- * Adapters are lazy-loaded — only the adapter for the current
- * page loads, keeping memory footprint minimal.
+ * Provider adapter factory — returns the right adapter per provider.
  */
 
 import type { ProviderId } from '@/providers/logos'
 
 export interface ProviderAdapter {
-  /** Start observing the page. Called once after overlay mounts. */
   start(): void
-  /** Stop all observers. Called on page unload. */
-  stop(): void
+  stop():  void
 }
 
-/** Stub adapter — used until real adapters are implemented in Phase 2. */
 class StubAdapter implements ProviderAdapter {
   constructor(private provider: ProviderId) {}
-
   start() {
-    console.debug(`[Trace] Stub adapter started for: ${this.provider}`)
+    console.debug(`[Trace] Stub adapter for: ${this.provider}`)
   }
-
   stop() {}
 }
 
-export function createProviderAdapter(provider: ProviderId): ProviderAdapter {
-  // Phase 1: return stub for all providers.
-  // Phase 2: lazy-import real adapters per provider.
+export async function createProviderAdapter(provider: ProviderId): Promise<ProviderAdapter> {
+  if (provider === 'claude') {
+    const { ClaudeAdapter } = await import('./claude')
+    return new ClaudeAdapter()
+  }
+  if (provider === 'chatgpt') {
+    const { ChatGPTAdapter } = await import('./chatgpt')
+    return new ChatGPTAdapter()
+  }
   return new StubAdapter(provider)
 }
