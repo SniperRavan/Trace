@@ -27,6 +27,7 @@
 
 import { detectProvider } from './providerDetect'
 import { createProviderAdapter } from './adapters'
+import { mountOverlay } from './overlayMount'
 
 // We import the compiled CSS as a raw string using Vite's ?inline suffix.
 // This lets us inject it into the Shadow DOM rather than <head>.
@@ -44,18 +45,19 @@ async function injectTraceOverlay() {
   if (!provider) return
 
   // ── Create host element ──────────────────────────────────────────
-  // sits at top level of <body>, completely outside the page's layout
+  // sits at top level of <body>, completely outside the page's layout.
+  // !important ensures heavy host sites (like ChatGPT) cannot override our container.
   const host = document.createElement('div')
   host.id = 'trace-root'
   host.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 0;
-    height: 0;
-    overflow: visible;
-    z-index: 2147483647;
-    pointer-events: none;
+    position: fixed !important;
+    top: 0 !important; 
+    left: 0 !important;
+    width: 0 !important; 
+    height: 0 !important;
+    overflow: visible !important;
+    z-index: 2147483647 !important;
+    pointer-events: none !important;
   `
   document.body.appendChild(host)
 
@@ -64,7 +66,7 @@ async function injectTraceOverlay() {
   // our shadow root. We use 'open' for easier debugging during dev.
   const shadow = host.attachShadow({ mode: 'open' })
 
-  // ── Inject styles into shadow root ──────────────────────────────
+  // ── Inject styles into shadow root ───────────────────────────────
   // Tailwind CSS and our custom overlay styles go here, NOT <head>.
   const styleEl = document.createElement('style')
   styleEl.textContent = overlayStyles
@@ -78,15 +80,19 @@ async function injectTraceOverlay() {
   mountEl.style.pointerEvents = 'auto'
   shadow.appendChild(mountEl)
 
-  // ── Lazy-load the React overlay ─────────────────────────────────
-  // Dynamic import keeps the initial content script parse cost low.
-  // The overlay bundle only loads when needed.
-  const { mountOverlay } = await import('./overlayMount')
+  // ── Mount the React overlay ──────────────────────────────────────
+  // Static import avoids Manifest V3 cross-origin dynamic import blocks.
   mountOverlay(mountEl, shadow, provider)
 
   // ── Start provider adapter ───────────────────────────────────────
-  const adapter = createProviderAdapter(provider)
+  // Adapter must be awaited because it dynamically imports the specific
+  // logic for Claude/ChatGPT to keep the initial content script light.
+  const adapter = await createProviderAdapter(provider)
   adapter.start()
+
+  // ── Cleanup ──────────────────────────────────────────────────────
+  // Ensure background timers/observers are killed if the user navigates away.
+  window.addEventListener('beforeunload', () => adapter.stop())
 }
 
 // Wait for body to exist before injecting.
