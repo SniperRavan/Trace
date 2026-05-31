@@ -1,6 +1,6 @@
 /**
  * src/content/adapters/chatgpt.ts
- * ChatGPT DOM adapter — observes message sends and quota indicators.
+ * ChatGPT DOM adapter — tracks input capture and handles precise dynamic quota indicators.
  */
 
 import { useTraceStore } from '@/storage/store'
@@ -10,13 +10,13 @@ import type { ProviderAdapter } from './index'
 export class ChatGPTAdapter implements ProviderAdapter {
   private observer: MutationObserver | null = null
   private cleanupFns: (() => void)[] = []
-  private lastMessageCount = 0
+  private pendingText = ''
 
   start() {
     useTraceStore.getState().loadFromStorage()
     useTraceStore.getState().updateUsage('chatgpt', { isActive: true })
 
-    this.watchComposer()
+    this.attachListeners()
     this.watchQuotaIndicator()
 
     const interval = setInterval(() => {
@@ -34,83 +34,108 @@ export class ChatGPTAdapter implements ProviderAdapter {
     useTraceStore.getState().persistToStorage()
   }
 
-  private watchComposer() {
-    let lastText = ''
+  private getComposerText(): string {
+    const el = this.findComposer()
+    if (!el) return ''
+    return el.innerText?.trim() ?? el.textContent?.trim() ?? (el as HTMLTextAreaElement).value?.trim() ?? ''
+  }
 
-    const captureText = () => {
-      const composer = this.findComposer()
-      if (!composer) return ''
-      return composer.textContent ?? (composer as HTMLTextAreaElement).value ?? ''
+  private record() {
+    // Snapshot target text immediately before framework intercept
+    this.pendingText = this.getComposerText()
+  }
+
+  private commit() {
+    const text = this.pendingText
+    this.pendingText = ''
+    if (!text) return
+
+    const tokens = estimateTokens(text)
+    const store = useTraceStore.getState()
+
+    store.addTokens('chatgpt', tokens)
+
+    // Smooth percent calculation helper instead of brittle 100% lockouts
+    const currentPercent = store.providers.chatgpt.quotaPercentUsed ?? 0
+    const newPercent = Math.min(95, currentPercent + 2) // Cap speculative text increments below 100%
+
+    store.updateUsage('chatgpt', {
+      messageCount: store.providers.chatgpt.messageCount + 1,
+      quotaPercentUsed: newPercent,
+      lastActiveAt: Date.now(),
+    })
+    store.persistToStorage()
+    console.log('[Trace] ChatGPT +', tokens, 'tokens | text:', text.slice(0, 40))
+  }
+
+  private attachListeners() {
+    const onKeydown = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.shiftKey) return
+
+      const active = document.activeElement as HTMLElement | null
+      const inComposer = active?.closest('#prompt-textarea') ||
+        active?.closest('[contenteditable="true"]') ||
+        active?.tagName === 'TEXTAREA'
+
+      if (!inComposer) return
+      this.record()
+      setTimeout(() => this.commit(), 100)
     }
 
-    const onSend = () => {
-      const text = lastText
-      if (!text.trim()) return
-      const tokens = estimateTokens(text)
-      useTraceStore.getState().addTokens('chatgpt', tokens)
-      useTraceStore.getState().updateUsage('chatgpt', {
-        messageCount: useTraceStore.getState().providers.chatgpt.messageCount + 1,
-        lastActiveAt: Date.now(),
-      })
-      useTraceStore.getState().persistToStorage()
-      lastText = ''
+    // Capture text on mousedown rather than click to outrun standard DOM updates
+    const onMousedown = (e: MouseEvent) => {
+      if (!this.isSendButton(e.target as HTMLElement)) return
+      this.record()
+      setTimeout(() => this.commit(), 100)
     }
 
-    const keyHandler = (e: KeyboardEvent) => {
-      const composer = this.findComposer()
-      if (!composer) return
-      lastText = captureText()
-      if (e.key === 'Enter' && !e.shiftKey) {
-        setTimeout(onSend, 150)
-      }
-    }
+    document.addEventListener('keydown', onKeydown, true)
+    document.addEventListener('mousedown', onMousedown, true)
 
-    const clickHandler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (this.isSendButton(target)) {
-        lastText = captureText()
-        setTimeout(onSend, 150)
-      }
-    }
-
-    document.addEventListener('keydown', keyHandler, true)
-    document.addEventListener('click', clickHandler, true)
     this.cleanupFns.push(
-      () => document.removeEventListener('keydown', keyHandler, true),
-      () => document.removeEventListener('click', clickHandler, true),
+      () => document.removeEventListener('keydown', onKeydown, true),
+      () => document.removeEventListener('mousedown', onMousedown, true)
     )
   }
 
   private watchQuotaIndicator() {
-    // ChatGPT shows "X messages left until HH:MM AM" in the UI
     const checkQuota = () => {
       const allText = document.body.innerText
+
+      // 1. Direct Hard Cap Block Check
+      const isCapped = allText.includes("You've reached your current limit") ||
+        allText.includes("You are out of free messages")
+
+      if (isCapped) {
+        useTraceStore.getState().updateUsage('chatgpt', {
+          quotaPercentUsed: 100
+        })
+
+        const resetMatch = allText.match(/(?:resets?|available again|try again after)\s+(?:at\s+)?(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i)
+        if (resetMatch) {
+          const resetAt = this.parseResetTime(resetMatch[1])
+          if (resetAt) {
+            useTraceStore.getState().updateUsage('chatgpt', { resetAt })
+          }
+        }
+        return
+      }
+
+      // 2. Relative Countdown Tracker Parsing
       const match = allText.match(/(\d+)\s+messages?\s+(?:left|remaining)/i)
       if (match) {
         const remaining = parseInt(match[1])
-        // GPT-4 typically allows ~40 messages per 3h window
         const total = 40
-        const percentUsed = Math.max(0, Math.round(((total - remaining) / total) * 100))
-        const current = useTraceStore.getState().providers.chatgpt.percentUsed
-        if (percentUsed > current) {
-          useTraceStore.getState().updateUsage('chatgpt', { percentUsed })
-        }
-      }
-
-      // Also look for reset time
-      const resetMatch = allText.match(/(?:resets?|available again)\s+(?:at\s+)?(\d{1,2}:\d{2}\s*(?:AM|PM)?)/i)
-      if (resetMatch) {
-        // Parse reset time and store it
-        const resetAt = this.parseResetTime(resetMatch[1])
-        if (resetAt) {
-          useTraceStore.getState().updateUsage('chatgpt', { resetAt })
-        }
+        const realPercent = Math.max(0, Math.min(100, Math.round(((total - remaining) / total) * 100)))
+        useTraceStore.getState().updateUsage('chatgpt', { quotaPercentUsed: realPercent })
       }
     }
 
-    checkQuota()
-    const interval = setInterval(checkQuota, 15000)
-    this.cleanupFns.push(() => clearInterval(interval))
+    // Hook mutation observer as our core interface driver instead of simple intervals
+    this.observer = new MutationObserver(() => checkQuota())
+    this.observer.observe(document.body, { childList: true, subtree: true })
+
+    this.cleanupFns.push(() => this.observer?.disconnect())
   }
 
   private findComposer(): HTMLElement | null {
@@ -122,14 +147,21 @@ export class ChatGPTAdapter implements ProviderAdapter {
     ) as HTMLElement | null
   }
 
-  private isSendButton(el: HTMLElement): boolean {
-    let current: HTMLElement | null = el
-    for (let i = 0; i < 4; i++) {
-      if (!current) break
-      const label = (current.getAttribute('aria-label') ?? '').toLowerCase()
-      const testId = current.getAttribute('data-testid') ?? ''
-      if (label.includes('send') || testId.includes('send')) return true
-      current = current.parentElement
+  private isSendButton(el: HTMLElement | null): boolean {
+    let cur = el
+    for (let i = 0; i < 5 && cur; i++) {
+      const label = (cur.getAttribute('aria-label') ?? '').toLowerCase()
+      const testid = cur.getAttribute('data-testid') ?? ''
+      const type = cur.getAttribute('type') ?? ''
+      const isDisabled = cur.hasAttribute('disabled')
+
+      if (
+        (label.includes('send') || testid.includes('send') || (type === 'submit' && cur.tagName === 'BUTTON')) &&
+        !isDisabled
+      ) {
+        return true
+      }
+      cur = cur.parentElement
     }
     return false
   }
@@ -139,7 +171,6 @@ export class ChatGPTAdapter implements ProviderAdapter {
       const now = new Date()
       const parsed = new Date(`${now.toDateString()} ${timeStr}`)
       if (isNaN(parsed.getTime())) return null
-      // If parsed time is in the past, it's tomorrow
       if (parsed.getTime() < Date.now()) {
         parsed.setDate(parsed.getDate() + 1)
       }
