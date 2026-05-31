@@ -5,10 +5,11 @@
  * Observes message submissions and estimates token usage.
  *
  * Strategy:
- *   1. Watch for send button clicks / Enter key on the input field
- *   2. Capture the text content of the composer before it clears
- *   3. Estimate tokens and add to store
- *   4. Also try to read the quota warning banner if Claude shows one
+ * 1. Detect message sends via Enter key or Send button click
+ * 2. Capture composer text before Claude clears it
+ * 3. Estimate token usage and update the store
+ * 4. Observe assistant responses as a confirmation signal
+ * 5. Persist usage data periodically
  */
 
 import { useTraceStore } from '@/storage/store'
@@ -17,29 +18,15 @@ import type { ProviderAdapter } from './index'
 
 export class ClaudeAdapter implements ProviderAdapter {
   private observer: MutationObserver | null = null
-  private lastText = ''
   private cleanupFns: (() => void)[] = []
+  private pendingText = ''
 
   start() {
-    // Load persisted data first
     useTraceStore.getState().loadFromStorage()
-
-    // Mark provider as active
-    useTraceStore.getState().updateUsage('claude', {
-      isActive: true,
-      messageCount: useTraceStore.getState().providers.claude.messageCount,
-    })
-
-    this.watchComposer()
-    this.watchQuotaBanner()
-
-    // Persist every 30s
-    const interval = setInterval(() => {
-      useTraceStore.getState().persistToStorage()
-    }, 30000)
-
-    this.cleanupFns.push(() => clearInterval(interval))
-
+    useTraceStore.getState().updateUsage('claude', { isActive: true })
+    this.attachListeners()
+    const iv = setInterval(() => useTraceStore.getState().persistToStorage(), 30000)
+    this.cleanupFns.push(() => clearInterval(iv))
     console.log('[Trace] Claude adapter started')
   }
 
@@ -50,127 +37,97 @@ export class ClaudeAdapter implements ProviderAdapter {
     useTraceStore.getState().persistToStorage()
   }
 
-  private watchComposer() {
-    // Claude's composer is a contenteditable div
-    // We capture text on send rather than on every keystroke
-    const captureAndEstimate = () => {
-      const composer = this.findComposer()
-      if (!composer) return
-      const text = composer.textContent ?? ''
-      if (!text.trim() || text === this.lastText) return
-      this.lastText = text
+  private getComposerText(): string {
+    // Try every known Claude composer selector in order
+    const candidates = [
+      'div.ProseMirror[contenteditable="true"]',
+      'div[contenteditable="true"][data-placeholder]',
+      '[data-testid="composer-input"]',
+      'div[contenteditable="true"]',
+    ]
+    for (const sel of candidates) {
+      const el = document.querySelector<HTMLElement>(sel)
+      const text = el?.innerText?.trim() ?? el?.textContent?.trim() ?? ''
+      if (text) return text
+    }
+    return ''
+  }
 
-      const tokens = estimateTokens(text)
-      useTraceStore.getState().addTokens('claude', tokens)
-      useTraceStore.getState().updateUsage('claude', {
-        messageCount: useTraceStore.getState().providers.claude.messageCount + 1,
-        lastActiveAt: Date.now(),
-      })
-      useTraceStore.getState().persistToStorage()
+  private record() {
+    // Snapshot text BEFORE the send clears the composer
+    this.pendingText = this.getComposerText()
+  }
+
+  private commit() {
+    const text = this.pendingText
+    this.pendingText = ''
+    if (!text) return
+    const tokens = estimateTokens(text)
+    const store = useTraceStore.getState()
+    store.addTokens('claude', tokens)
+    store.updateUsage('claude', {
+      messageCount: store.providers.claude.messageCount + 1,
+      lastActiveAt: Date.now(),
+    })
+    store.persistToStorage()
+    console.log('[Trace] Claude +', tokens, 'tokens | text:', text.slice(0, 40))
+  }
+
+  private attachListeners() {
+    // Capture text on keydown BEFORE Enter clears the composer
+    const onKeydown = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.shiftKey) return
+      // Only fire if focus is inside the composer
+      const active = document.activeElement as HTMLElement | null
+      const inComposer = active?.closest('[contenteditable="true"]') ||
+        active?.closest('[data-testid="composer-input"]')
+      if (!inComposer) return
+      this.record()
+      // Commit after React re-render clears the field
+      setTimeout(() => this.commit(), 100)
     }
 
-    // Watch for Enter key in composer
-    const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        // Small delay — let Claude clear the composer first so we
-        // know a message was actually sent (not just a newline)
-        setTimeout(() => {
-          const composer = this.findComposer()
-          if (!composer?.textContent?.trim()) {
-            captureAndEstimate()
-          }
-        }, 100)
-      }
+    // Capture text on send-button mousedown BEFORE click clears composer
+    const onMousedown = (e: MouseEvent) => {
+      if (!this.isSendButton(e.target as HTMLElement)) return
+      this.record()
+      setTimeout(() => this.commit(), 100)
     }
 
-    // Watch for send button click
-    const clickHandler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (this.isSendButton(target)) {
-        setTimeout(captureAndEstimate, 100)
-      }
-    }
-
-    document.addEventListener('keydown', keyHandler, true)
-    document.addEventListener('click', clickHandler, true)
+    document.addEventListener('keydown', onKeydown, true)
+    document.addEventListener('mousedown', onMousedown, true)
 
     this.cleanupFns.push(
-      () => document.removeEventListener('keydown', keyHandler, true),
-      () => document.removeEventListener('click', clickHandler, true),
+      () => document.removeEventListener('keydown', onKeydown, true),
+      () => document.removeEventListener('mousedown', onMousedown, true),
     )
 
-    // Also observe DOM for new assistant messages appearing
-    // (confirms a message was sent and response received)
+    // Also watch for new assistant turns as a secondary signal
     this.observer = new MutationObserver(() => {
-      this.checkForNewResponse()
+      const turns = document.querySelectorAll(
+        '[data-testid^="conversation-turn-"], .font-claude-message'
+      )
+      // If a new turn appeared and we have pending text, commit it
+      if (this.pendingText && turns.length > 0) {
+        this.commit()
+      }
     })
-
-    this.observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-    })
+    this.observer.observe(document.body, { childList: true, subtree: true })
   }
 
-  private watchQuotaBanner() {
-    // Claude sometimes shows a usage warning banner.
-    // If we detect it, we can refine our percentage estimate.
-    const checkBanner = () => {
-      const banners = document.querySelectorAll('[class*="usage"], [class*="limit"], [class*="quota"]')
-      banners.forEach(banner => {
-        const text = banner.textContent ?? ''
-        // Look for patterns like "X messages left" or "resets at HH:MM"
-        const msgMatch = text.match(/(\d+)\s+messages?\s+left/i)
-        if (msgMatch) {
-          const remaining = parseInt(msgMatch[1])
-          // Rough estimate: if X messages left out of ~20 typical
-          const total = 20
-          const used = total - remaining
-          const percentUsed = Math.round((used / total) * 100)
-          if (percentUsed > useTraceStore.getState().providers.claude.percentUsed) {
-            useTraceStore.getState().updateUsage('claude', { percentUsed })
-          }
-        }
-      })
-    }
-
-    // Check on load and every 10s
-    checkBanner()
-    const interval = setInterval(checkBanner, 10000)
-    this.cleanupFns.push(() => clearInterval(interval))
-  }
-
-  private findComposer(): HTMLElement | null {
-    // Claude's composer selectors (may change with UI updates)
-    return (
-      document.querySelector('[contenteditable="true"][data-placeholder]') ??
-      document.querySelector('div[contenteditable="true"].ProseMirror') ??
-      document.querySelector('[contenteditable="true"]')
-    ) as HTMLElement | null
-  }
-
-  private isSendButton(el: HTMLElement): boolean {
-    // Walk up 3 levels to find send button
-    let current: HTMLElement | null = el
-    for (let i = 0; i < 3; i++) {
-      if (!current) break
-      const label = (current.getAttribute('aria-label') ?? '').toLowerCase()
-      const type  = current.getAttribute('type') ?? ''
-      if (label.includes('send') || (type === 'button' && label.includes('send'))) return true
-      current = current.parentElement
+  private isSendButton(el: HTMLElement | null): boolean {
+    let cur = el
+    for (let i = 0; i < 5 && cur; i++) {
+      const label = (cur.getAttribute('aria-label') ?? '').toLowerCase()
+      const testid = cur.getAttribute('data-testid') ?? ''
+      const type = cur.getAttribute('type') ?? ''
+      if (
+        label.includes('send') ||
+        testid.includes('send') ||
+        (type === 'submit' && cur.tagName === 'BUTTON')
+      ) return true
+      cur = cur.parentElement
     }
     return false
-  }
-
-  private lastResponseCount = 0
-
-  private checkForNewResponse() {
-    // Count assistant message blocks as a proxy for sent messages
-    const responses = document.querySelectorAll(
-      '[data-testid*="assistant"], [class*="assistant-message"], .font-claude-message'
-    )
-    if (responses.length > this.lastResponseCount) {
-      this.lastResponseCount = responses.length
-      // Response received — good signal that a message was sent
-    }
   }
 }
