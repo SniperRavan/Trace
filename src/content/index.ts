@@ -28,6 +28,7 @@
 import { detectProvider } from './providerDetect'
 import { createProviderAdapter } from './adapters'
 import { mountOverlay } from './overlayMount'
+import { useTraceStore } from '@/storage/store'
 
 // We import the compiled CSS as a raw string using Vite's ?inline suffix.
 // This lets us inject it into the Shadow DOM rather than <head>.
@@ -84,12 +85,14 @@ async function injectTraceOverlay() {
   // Static import avoids Manifest V3 cross-origin dynamic import blocks.
   mountOverlay(mountEl, shadow, provider)
 
+  // ── Initialize Global Trace Store & Active Timers ────────────────
+  await useTraceStore.getState().init()
+
   // ── Start provider adapter ───────────────────────────────────────
   // Adapter must be awaited because it dynamically imports the specific
   // logic for Claude/ChatGPT to keep the initial content script light.
   const adapter = await createProviderAdapter(provider)
   adapter.start()
-
   // ── Cleanup ──────────────────────────────────────────────────────
   // Ensure background timers/observers are killed if the user navigates away.
   window.addEventListener('beforeunload', () => adapter.stop())
