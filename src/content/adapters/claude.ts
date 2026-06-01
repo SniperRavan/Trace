@@ -22,11 +22,8 @@ export class ClaudeAdapter implements ProviderAdapter {
   private pendingText = ''
 
   start() {
-    useTraceStore.getState().loadFromStorage()
     useTraceStore.getState().updateUsage('claude', { isActive: true })
     this.attachListeners()
-    const iv = setInterval(() => useTraceStore.getState().persistToStorage(), 30000)
-    this.cleanupFns.push(() => clearInterval(iv))
     console.log('[Trace] Claude adapter started')
   }
 
@@ -65,11 +62,10 @@ export class ClaudeAdapter implements ProviderAdapter {
     const tokens = estimateTokens(text)
     const store = useTraceStore.getState()
     store.addTokens('claude', tokens)
+    store.incrementMessageCount('claude')
     store.updateUsage('claude', {
-      messageCount: store.providers.claude.messageCount + 1,
       lastActiveAt: Date.now(),
     })
-    store.persistToStorage()
     console.log('[Trace] Claude +', tokens, 'tokens | text:', text.slice(0, 40))
   }
 
