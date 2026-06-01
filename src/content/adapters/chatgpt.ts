@@ -13,16 +13,11 @@ export class ChatGPTAdapter implements ProviderAdapter {
   private pendingText = ''
 
   start() {
-    useTraceStore.getState().loadFromStorage()
+    // Note: Storage hydration and auto-expirations are now managed cleanly by store.init() inside index.ts
     useTraceStore.getState().updateUsage('chatgpt', { isActive: true })
 
     this.attachListeners()
     this.watchQuotaIndicator()
-
-    const interval = setInterval(() => {
-      useTraceStore.getState().persistToStorage()
-    }, 30000)
-    this.cleanupFns.push(() => clearInterval(interval))
 
     console.log('[Trace] ChatGPT adapter started')
   }
@@ -31,7 +26,8 @@ export class ChatGPTAdapter implements ProviderAdapter {
     this.observer?.disconnect()
     this.cleanupFns.forEach(fn => fn())
     useTraceStore.getState().updateUsage('chatgpt', { isActive: false })
-    useTraceStore.getState().persistToStorage()
+    useTraceStore.getState().stopAutoTimer()
+    useTraceStore.getState().persistToStorage() // Flush memory instantly when tab unmounts
   }
 
   private getComposerText(): string {
@@ -53,18 +49,21 @@ export class ChatGPTAdapter implements ProviderAdapter {
     const tokens = estimateTokens(text)
     const store = useTraceStore.getState()
 
+    // 1. Accumulate estimated tokens safely
     store.addTokens('chatgpt', tokens)
 
-    // Smooth percent calculation helper instead of brittle 100% lockouts
-    const currentPercent = store.providers.chatgpt.quotaPercentUsed ?? 0
-    const newPercent = Math.min(95, currentPercent + 2) // Cap speculative text increments below 100%
+    // 2. Increment historical message tracking atomatically
+    store.incrementMessageCount('chatgpt')
+
+    // 3. Speculatively step quota up slightly (clamped below hard limit banner trigger threshold)
+    const currentQuota = store.providers.chatgpt.quotaPercentUsed
+    const speculativeQuota = Math.min(95, currentQuota + 2)
 
     store.updateUsage('chatgpt', {
-      messageCount: store.providers.chatgpt.messageCount + 1,
-      quotaPercentUsed: newPercent,
+      quotaPercentUsed: speculativeQuota,
       lastActiveAt: Date.now(),
     })
-    store.persistToStorage()
+
     console.log('[Trace] ChatGPT +', tokens, 'tokens | text:', text.slice(0, 40))
   }
 
