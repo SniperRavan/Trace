@@ -7,7 +7,7 @@
 
 ## Current Phase
 
-**Phase 1 — Extension Architecture Scaffold** ✅ COMPLETE
+**Phase 2 — Compact Panel + Provider Adapters** ✅ COMPLETE
 
 ---
 
