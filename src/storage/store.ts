@@ -1,279 +1,337 @@
-import { create } from 'zustand'
-import type { ProviderId } from '@/providers/logos'
+/*
+ * src/storage/store.ts
+ */
 
-export interface ProviderUsage {
-  id: ProviderId
-  tokensUsed: number
-  tokensTotal: number
-  tokenPercentUsed: number  // Heuristic-driven text estimation
-  quotaPercentUsed: number  // Precise, UI-scraped quota status (0-100)
-  resetAt: number
-  lastActiveAt: number
-  messageCount: number
-  isActive: boolean
+import { create } from 'zustand'
+
+export const ANALYTICS_REFRESH_INTERVAL = 60_000
+export const MAX_HISTORY_POINTS = 50
+
+export const PROVIDER_IDENTITY: Record<ProviderId, { letter: string; color: string; name: string }> = {
+  chatgpt: { letter: 'G', color: '#10b981', name: 'ChatGPT' },
+  claude: { letter: 'C', color: '#f59e0b', name: 'Claude' },
+  gemini: { letter: 'M', color: '#818cf8', name: 'Gemini' },
+  grok: { letter: 'X', color: '#9ca3af', name: 'Grok' },
+  perplexity: { letter: 'P', color: '#06b6d4', name: 'Perplexity' },
 }
 
+export type ProviderId = 'chatgpt' | 'claude' | 'gemini' | 'grok' | 'perplexity'
+export type HealthState = 'healthy' | 'near_limit' | 'over_limit'
 export type ThemeName = 'catppuccin' | 'nord' | 'tokyonight' | 'gruvbox' | 'dracula' | 'everforest'
 
+export const ALL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity']
+
+const SESSION_LIMIT: Record<ProviderId, number> = {
+  chatgpt: 40_000,
+  claude: 45_000,
+  gemini: 60_000,
+  grok: 25_000,
+  perplexity: 20_000,
+}
+
+const WEEKLY_LIMIT: Record<ProviderId, number> = {
+  chatgpt: 200_000,
+  claude: 300_000,
+  gemini: 500_000,
+  grok: 100_000,
+  perplexity: 100_000,
+}
+
+const SESSION_RESET_MS: Record<ProviderId, number> = {
+  chatgpt: 3 * 60 * 60 * 1_000,
+  claude: 8 * 60 * 60 * 1_000,
+  gemini: 24 * 60 * 60 * 1_000,
+  grok: 24 * 60 * 60 * 1_000,
+  perplexity: 24 * 60 * 60 * 1_000,
+}
+
+export interface UsagePeriod {
+  used: number
+  total: number
+  remaining: number
+  resetAt: number
+}
+
+export interface HistoryPoint {
+  timestamp: number
+  sessionPercent: number
+  weeklyPercent: number
+}
+
+export interface ProviderState {
+  id: ProviderId
+  totalTokens: number
+  inputTokens: number
+  outputTokens: number
+  messageCount: number
+  sessionUsage: UsagePeriod
+  weeklyUsage: UsagePeriod
+  cacheExpiresAt: number
+  lastActiveAt: number
+  isActive: boolean
+  history: HistoryPoint[]
+}
+
 export interface TraceStore {
-  providers: Record<ProviderId, ProviderUsage>
+  providers: Record<ProviderId, ProviderState>
   activeProvider: ProviderId | null
   overlayOpen: boolean
   expandedView: boolean
+  expandedProvider: ProviderId | null
   currentTheme: ThemeName
+  lastAnalyticsAt: number
 
   init: () => Promise<void>
-  updateUsage: (id: ProviderId, delta: Partial<ProviderUsage>) => void
-  incrementMessageCount: (id: ProviderId) => void
-  addTokens: (id: ProviderId, tokens: number) => void
-  setActiveProvider: (id: ProviderId | null) => void
-  toggleOverlay: () => void
-  setExpandedView: (expanded: boolean) => void
-  setTheme: (theme: ThemeName) => void
   loadFromStorage: () => Promise<void>
   persistToStorage: () => Promise<void>
-  checkQuotaExpirations: () => void
-  startAutoTimer: () => void
-  stopAutoTimer: () => void
+  addTokens: (id: ProviderId, total: number, input?: number, output?: number) => void
+  refreshAnalytics: (id: ProviderId) => void
+  updateUsage: (id: ProviderId, delta: Partial<ProviderState>) => void
+  setActiveProvider: (id: ProviderId | null) => void
+  toggleOverlay: () => void
+  setExpandedView: (open: boolean, provider?: ProviderId | null) => void
+  setTheme: (theme: ThemeName) => void
+  setCacheExpiry: (id: ProviderId, expiresAt: number) => void
+  checkResets: () => void
 }
 
-const QUOTA: Record<ProviderId, number> = {
-  chatgpt: 40000,
-  claude: 45000,
-  gemini: 60000,
-  grok: 25000,
-  perplexity: 20000,
-  deepseek: 50000,
-  meta: 30000,
+function safePercent(used: number, total: number): number {
+  if (!total || total <= 0) return 0
+  return Math.min(100, Math.round((used / total) * 100))
 }
 
-const RESET_INTERVAL: Record<ProviderId, number> = {
-  chatgpt: 3 * 60 * 60 * 1000,  // 3h rolling
-  claude: 8 * 60 * 60 * 1000,  // 8h rolling
-  gemini: 24 * 60 * 60 * 1000, // daily
-  grok: 24 * 60 * 60 * 1000, // daily
-  perplexity: 24 * 60 * 60 * 1000, // daily
-  deepseek: 24 * 60 * 60 * 1000, // daily
-  meta: 24 * 60 * 60 * 1000, // daily
+export function getHealthState(used: number, total: number): HealthState {
+  if (!total || total <= 0) return 'healthy'
+  const pct = used / total
+  if (pct >= 1.0) return 'over_limit'
+  if (pct >= 0.8) return 'near_limit'
+  return 'healthy'
 }
 
-function defaultUsage(id: ProviderId): ProviderUsage {
+export function getSessionPercent(state: ProviderState): number {
+  return safePercent(state.sessionUsage.used, state.sessionUsage.total)
+}
+
+export function getWeeklyPercent(state: ProviderState): number {
+  return safePercent(state.weeklyUsage.used, state.weeklyUsage.total)
+}
+
+export function getRemaining(state: ProviderState, type: 'session' | 'weekly'): number {
+  const period = type === 'session' ? state.sessionUsage : state.weeklyUsage
+  return Math.max(0, period.total - period.used)
+}
+
+export function getProviderHealth(state: ProviderState): HealthState {
+  return getHealthState(state.sessionUsage.used, state.sessionUsage.total)
+}
+
+export function buildMiniChartData(state: ProviderState): number[] {
+  return state.history.map(p => p.sessionPercent)
+}
+
+function appendHistory(history: HistoryPoint[], point: HistoryPoint): HistoryPoint[] {
+  const next = [...history, point]
+  if (next.length > MAX_HISTORY_POINTS) next.shift()
+  return next
+}
+
+function defaultSession(id: ProviderId): UsagePeriod {
+  return { used: 0, total: SESSION_LIMIT[id], remaining: SESSION_LIMIT[id], resetAt: Date.now() + SESSION_RESET_MS[id] }
+}
+
+function defaultWeekly(id: ProviderId): UsagePeriod {
+  return { used: 0, total: WEEKLY_LIMIT[id], remaining: WEEKLY_LIMIT[id], resetAt: Date.now() + 7 * 24 * 60 * 60 * 1_000 }
+}
+
+function defaultProvider(id: ProviderId): ProviderState {
   return {
-    id,
-    tokensUsed: 0,
-    tokensTotal: QUOTA[id],
-    tokenPercentUsed: 0,
-    quotaPercentUsed: 0,
-    resetAt: Date.now() + RESET_INTERVAL[id],
-    lastActiveAt: 0,
-    messageCount: 0,
-    isActive: false,
+    id, totalTokens: 0, inputTokens: 0, outputTokens: 0, messageCount: 0,
+    sessionUsage: defaultSession(id), weeklyUsage: defaultWeekly(id),
+    cacheExpiresAt: 0, lastActiveAt: 0, isActive: false, history: [],
   }
 }
 
-const ALL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity', 'deepseek', 'meta']
-
-function makeDefaultProviders(): Record<ProviderId, ProviderUsage> {
-  return Object.fromEntries(
-    ALL_PROVIDERS.map(id => [id, defaultUsage(id)])
-  ) as Record<ProviderId, ProviderUsage>
+function makeDefaultProviders(): Record<ProviderId, ProviderState> {
+  return Object.fromEntries(ALL_PROVIDERS.map(id => [id, defaultProvider(id)])) as Record<ProviderId, ProviderState>
 }
 
-let dbTimeoutRef: ReturnType<typeof globalThis.setTimeout> | null = null
-let autoTimerRef: ReturnType<typeof globalThis.setInterval> | null = null
+let writeTimer: ReturnType<typeof setTimeout> | null = null
 
-export const useTraceStore = create<TraceStore>((set, get) => {
+function scheduleWrite(getState: () => TraceStore) {
+  if (writeTimer) clearTimeout(writeTimer)
+  writeTimer = setTimeout(async () => {
+    writeTimer = null
+    try { await chrome.storage.local.set({ trace_state: getState().providers }) }
+    catch (err) { console.warn('[Trace Store] write failed:', err) }
+  }, 1_500)
+}
 
-  const scheduleDebouncedWrite = () => {
-    if (dbTimeoutRef) {
-      globalThis.clearTimeout(dbTimeoutRef)
-    }
+export const useTraceStore = create<TraceStore>((set, get) => ({
+  providers: makeDefaultProviders(),
+  activeProvider: null,
+  overlayOpen: false,
+  expandedView: false,
+  expandedProvider: null,
+  currentTheme: 'catppuccin',
+  lastAnalyticsAt: 0,
 
-    dbTimeoutRef = globalThis.setTimeout(async () => {
-      try {
-        await chrome.storage.local.set({ trace_usage: get().providers })
-      } catch (err) {
-        console.warn('[Trace Store] Storage save failure:', err)
-      }
-      dbTimeoutRef = null
-    }, 1500)
-  }
-
-  return {
-    providers: makeDefaultProviders(),
-    activeProvider: null,
-    overlayOpen: false,
-    expandedView: false,
-    currentTheme: 'catppuccin',
-
-    // ✅ UNIFIED INITIALIZATION METHOD: Resolves the initialization lifecycle vulnerability entirely
-    init: async () => {
-      get().startAutoTimer()
-      await get().loadFromStorage()
-    },
-
-    updateUsage: (id, delta) => {
-      const current = get().providers[id]
-      if (!current) return
-
-      // ✅ FIX: Type-safe change verification that removes the 'as any' casting completely
-      const keys = Object.keys(delta) as (keyof typeof delta)[]
-      const hasChanges = keys.some((k) => delta[k] !== current[k])
-      if (!hasChanges) return
-
-      set(state => {
-        const target = state.providers[id]
-        if (!target) return state // Defensive guardrail replaces brittle non-null assertions (!)
-
-        const updated = { ...target, ...delta }
-        const safeTotal = Math.max(1, updated.tokensTotal)
-        updated.tokenPercentUsed = Math.min(100, Math.round((updated.tokensUsed / safeTotal) * 100))
-
-        return { providers: { ...state.providers, [id]: updated } }
-      })
-
-      scheduleDebouncedWrite()
-    },
-
-    incrementMessageCount: (id) => {
-      const current = get().providers[id]
-      if (!current) return
-
-      set(state => {
-        const target = state.providers[id]
-        if (!target) return state
-
-        const updated = {
-          ...target,
-          messageCount: target.messageCount + 1,
-          lastActiveAt: Date.now()
-        }
-        return { providers: { ...state.providers, [id]: updated } }
-      })
-
-      scheduleDebouncedWrite()
-    },
-
-    addTokens: (id, tokens) => {
-      const current = get().providers[id]
-      if (!current || tokens <= 0) return
-
-      set(state => {
-        const target = state.providers[id]
-        if (!target) return state
-
-        const tokensUsed = target.tokensUsed + tokens
-        const safeTotal = Math.max(1, target.tokensTotal)
-        const tokenPercentUsed = Math.min(100, Math.round((tokensUsed / safeTotal) * 100))
-
-        const updated = {
-          ...target,
-          tokensUsed,
-          tokenPercentUsed,
-          lastActiveAt: Date.now()
-        }
-        return { providers: { ...state.providers, [id]: updated } }
-      })
-
-      scheduleDebouncedWrite()
-    },
-
-    checkQuotaExpirations: () => {
-      let changed = false
-      const now = Date.now()
-      const currentProviders = get().providers
-
-      ALL_PROVIDERS.forEach(id => {
-        const provider = currentProviders[id]
-        if (provider && now > provider.resetAt) {
-          changed = true
-        }
-      })
-
-      if (!changed) return
-
-      set(state => {
-        const updatedProviders = { ...state.providers }
-        ALL_PROVIDERS.forEach(id => {
-          const provider = updatedProviders[id]
-          if (provider && now > provider.resetAt) {
-            updatedProviders[id] = defaultUsage(id)
+  init: async () => {
+    await get().loadFromStorage()
+    try {
+      chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName === 'local' && changes.trace_state) {
+          const nextState = changes.trace_state.newValue as Record<ProviderId, ProviderState>
+          if (nextState) {
+            set({ providers: nextState })
           }
-        })
-        return { providers: updatedProviders }
+        }
       })
+    } catch (e) {
+      console.warn('[Trace Store] onChanged listener failed:', e)
+    }
+  },
 
-      scheduleDebouncedWrite()
-    },
+  loadFromStorage: async () => {
+    try {
+      const result = await chrome.storage.local.get('trace_state')
+      if (!result.trace_state) return
+      const saved = result.trace_state as Record<ProviderId, Partial<ProviderState>>
+      const now = Date.now()
+      const merged = Object.fromEntries(
+        ALL_PROVIDERS.map(id => {
+          const s = saved[id]
+          const def = defaultProvider(id)
+          if (!s) return [id, def]
+          const session: UsagePeriod = s.sessionUsage ?? defaultSession(id)
+          const weekly: UsagePeriod = s.weeklyUsage ?? defaultWeekly(id)
+          if (now > session.resetAt) Object.assign(session, defaultSession(id))
+          if (now > weekly.resetAt) Object.assign(weekly, defaultWeekly(id))
+          const restored: ProviderState = {
+            ...def, ...s, sessionUsage: session, weeklyUsage: weekly,
+            isActive: false, history: (s.history ?? []).slice(-MAX_HISTORY_POINTS),
+          }
+          return [id, restored]
+        })
+      ) as Record<ProviderId, ProviderState>
+      set({ providers: merged })
+    } catch (err) { console.error('[Trace Store] load failed:', err) }
+  },
 
-    startAutoTimer: () => {
-      if (autoTimerRef !== null) return
+  persistToStorage: async () => {
+    if (writeTimer) { clearTimeout(writeTimer); writeTimer = null }
+    try { await chrome.storage.local.set({ trace_state: get().providers }) }
+    catch (err) { console.warn('[Trace Store] persist failed:', err) }
+  },
 
-      autoTimerRef = globalThis.setInterval(() => {
-        get().checkQuotaExpirations()
-      }, 60000) // Checks cleanly every 60 seconds
-    },
-
-    stopAutoTimer: () => {
-      if (autoTimerRef === null) return
-      globalThis.clearInterval(autoTimerRef)
-      autoTimerRef = null
-    },
-
-    setActiveProvider: (id) => set({ activeProvider: id }),
-    toggleOverlay: () => set(state => ({ overlayOpen: !state.overlayOpen })),
-    setExpandedView: (expanded) => set({ expandedView: expanded }),
-    setTheme: (theme) => set({ currentTheme: theme }),
-
-    loadFromStorage: async () => {
-      try {
-        const result = await chrome.storage.local.get('trace_usage')
-        if (!result.trace_usage) return
-
-        const saved = result.trace_usage as Record<ProviderId, Partial<ProviderUsage> & { percentUsed?: number }>
-        const defaults = makeDefaultProviders()
-
-        const merged = Object.fromEntries(
-          ALL_PROVIDERS.map(id => {
-            const s = saved[id]
-            if (!s) return [id, defaults[id]]
-
-            const isExpired = Date.now() > (s.resetAt ?? 0)
-            if (isExpired) return [id, defaultUsage(id)]
-
-            const legacyPercentFallback = s.percentUsed ?? 0
-            const migratedItem: ProviderUsage = {
-              ...defaults[id],
-              ...s,
-              tokensUsed: s.tokensUsed ?? 0,
-              tokensTotal: s.tokensTotal ?? QUOTA[id],
-              quotaPercentUsed: s.quotaPercentUsed ?? legacyPercentFallback,
-              messageCount: s.messageCount ?? 0,
-              isActive: false
-            }
-
-            const safeTotal = Math.max(1, migratedItem.tokensTotal)
-            migratedItem.tokenPercentUsed = Math.min(100, Math.round((migratedItem.tokensUsed / safeTotal) * 100))
-            return [id, migratedItem]
-          })
-        ) as Record<ProviderId, ProviderUsage>
-
-        set({ providers: merged })
-      } catch (err) {
-        console.error('[Trace Store] Error reading initial layer:', err)
+  addTokens: (id, total, input = 0, output = 0) => {
+    if (total <= 0 && input <= 0 && output <= 0) return
+    const tokens = total || input + output
+    set(state => {
+      const p = state.providers[id]
+      if (!p) return state
+      const now = Date.now()
+      const session = { ...p.sessionUsage }
+      const weekly = { ...p.weeklyUsage }
+      if (now > session.resetAt) Object.assign(session, defaultSession(id))
+      if (now > weekly.resetAt) Object.assign(weekly, defaultWeekly(id))
+      session.used = session.used + tokens
+      session.remaining = Math.max(0, session.total - session.used)
+      weekly.used = weekly.used + tokens
+      weekly.remaining = Math.max(0, weekly.total - weekly.used)
+      const updated: ProviderState = {
+        ...p,
+        totalTokens: p.totalTokens + tokens,
+        inputTokens: p.inputTokens + input,
+        outputTokens: p.outputTokens + output,
+        messageCount: p.messageCount + 1,
+        lastActiveAt: now,
+        sessionUsage: session,
+        weeklyUsage: weekly,
       }
-    },
+      return { providers: { ...state.providers, [id]: updated } }
+    })
+    scheduleWrite(get)
+  },
 
-    persistToStorage: async () => {
-      if (dbTimeoutRef) {
-        globalThis.clearTimeout(dbTimeoutRef)
-        dbTimeoutRef = null
+  refreshAnalytics: (id) => {
+    set(state => {
+      const p = state.providers[id]
+      if (!p) return state
+      const point: HistoryPoint = {
+        timestamp: Date.now(),
+        sessionPercent: getSessionPercent(p),
+        weeklyPercent: getWeeklyPercent(p),
       }
-      try {
-        await chrome.storage.local.set({ trace_usage: get().providers })
-      } catch (err) {
-        console.warn('[Trace Store] Direct persistence failed:', err)
+      const updated: ProviderState = { ...p, history: appendHistory(p.history, point) }
+      return { providers: { ...state.providers, [id]: updated }, lastAnalyticsAt: Date.now() }
+    })
+    scheduleWrite(get)
+  },
+
+  updateUsage: (id, delta) => {
+    set(state => {
+      const p = state.providers[id]
+      if (!p) return state
+      return { providers: { ...state.providers, [id]: { ...p, ...delta } } }
+    })
+    scheduleWrite(get)
+  },
+
+  setCacheExpiry: (id, expiresAt) => {
+    set(state => {
+      const p = state.providers[id]
+      if (!p) return state
+      return { providers: { ...state.providers, [id]: { ...p, cacheExpiresAt: expiresAt } } }
+    })
+    scheduleWrite(get)
+  },
+
+  setActiveProvider: (id) => set({ activeProvider: id }),
+  toggleOverlay: () => set(s => ({ overlayOpen: !s.overlayOpen })),
+  setExpandedView: (open, provider = null) => set({ expandedView: open, expandedProvider: provider ?? null }),
+  setTheme: (theme) => set({ currentTheme: theme }),
+  checkResets: () => {
+    const now = Date.now()
+    let changed = false
+    const providers = { ...get().providers }
+    ALL_PROVIDERS.forEach(id => {
+      const p = providers[id]
+      let session = { ...p.sessionUsage }
+      let weekly = { ...p.weeklyUsage }
+      let providerChanged = false
+      if (now > session.resetAt) {
+        session = defaultSession(id)
+        providerChanged = true
       }
-    },
-  }
-})
+      if (now > weekly.resetAt) {
+        weekly = defaultWeekly(id)
+        providerChanged = true
+      }
+      if (providerChanged) {
+        providers[id] = { ...p, sessionUsage: session, weeklyUsage: weekly }
+        changed = true
+      }
+    })
+    if (changed) {
+      set({ providers })
+      get().persistToStorage()
+    }
+  },
+}))
+
+let engineTimer: ReturnType<typeof setInterval> | null = null
+
+export function startAnalyticsEngine() {
+  if (engineTimer) return
+  engineTimer = setInterval(() => {
+    const store = useTraceStore.getState()
+    store.checkResets()
+    ALL_PROVIDERS.forEach(id => store.refreshAnalytics(id))
+  }, ANALYTICS_REFRESH_INTERVAL)
+}
+
+export function stopAnalyticsEngine() {
+  if (!engineTimer) return
+  clearInterval(engineTimer)
+  engineTimer = null
+}
