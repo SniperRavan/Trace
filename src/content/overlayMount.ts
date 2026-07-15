@@ -8,7 +8,7 @@
 
 import { createRoot } from 'react-dom/client'
 import { createElement } from 'react'
-import type { ProviderId } from '@/providers/logos'
+import type { ProviderId } from '@/storage/store'
 
 // Lazy import — keeps initial script parse cost minimal.
 // The Overlay component and all its dependencies only load here.
