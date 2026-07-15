@@ -9,7 +9,10 @@
     "build": "vite build && vite build --config vite.content.config.ts && vite build --config vite.interceptor.config.ts",
     "build:firefox": "vite build --mode firefox",
     "preview": "vite preview",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "framer-motion": "^11.3.0",
@@ -19,6 +22,7 @@
     "zustand": "^4.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/chrome": "^0.0.268",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
@@ -30,6 +34,8 @@
     "typescript": "^5.5.4",
     "vite": "^5.3.5",
     "vite-plugin-web-extension": "^4.1.1",
+    "vitest": "^4.1.10",
+    "vitest-chrome": "^0.1.0",
     "webextension-polyfill": "^0.12.0"
   }
 }
