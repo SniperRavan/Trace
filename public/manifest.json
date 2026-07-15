@@ -31,7 +31,23 @@
         "https://chat.openai.com/*",
         "https://claude.ai/*",
         "https://gemini.google.com/*",
-        "https://x.com/i/grok*",
+        "https://x.com/*",
+        "https://perplexity.ai/*",
+        "https://www.perplexity.ai/*"
+      ],
+      "js": ["content/interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": false
+    },
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*",
+        "https://claude.ai/*",
+        "https://gemini.google.com/*",
+        "https://x.com/*",
+        "https://perplexity.ai/*",
         "https://www.perplexity.ai/*"
       ],
       "js": ["content/index.js"],
@@ -47,8 +63,10 @@
     "https://chat.openai.com/*",
     "https://claude.ai/*",
     "https://gemini.google.com/*",
-    "https://x.com/i/grok*",
-    "https://www.perplexity.ai/*"
+    "https://x.com/*",
+    "https://perplexity.ai/*",
+    "https://www.perplexity.ai/*",
+    "https://www.google.com/s2/favicons*"
   ],
 
   "web_accessible_resources": [
