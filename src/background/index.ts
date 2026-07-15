@@ -65,7 +65,7 @@ async function fetchBase64Logo(domain: string): Promise<string> {
   return `data:${mime};base64,${base64}`
 }
 
-browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'TRACE_USAGE_UPDATE') {
     // Phase 2: validate and write to storage.local
     console.debug('[Trace] Usage update received:', message.payload)
@@ -73,7 +73,10 @@ browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === 'TRACE_REQUEST_STATE') {
     // Popup is asking for current state — read from storage and return.
-    return browser.storage.local.get('trace_usage') as any
+    chrome.storage.local.get('trace_usage').then(res => {
+      sendResponse(res)
+    })
+    return true
   }
 
   if (message.type === 'TRACE_FETCH_LOGO') {
