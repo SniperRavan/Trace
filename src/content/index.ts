@@ -2,12 +2,13 @@ import { detectProvider } from './providerDetect'
 import overlayStyles from '../overlay/overlay.css?inline'
 import { mountOverlay } from './overlayMount'
 import { createProviderAdapter } from './adapters'
-import { useTraceStore, startAnalyticsEngine, stopAnalyticsEngine } from '@/storage/store'
+import { useTraceStore, startAnalyticsEngine, stopAnalyticsEngine, isContextValid } from '@/storage/store'
 
 let injectedElement: HTMLElement | null = null
 let activeAdapter: any = null
 
 async function handleRoute() {
+  if (!isContextValid()) return
   const hostname = window.location.hostname
   const path = window.location.pathname
 
@@ -89,7 +90,11 @@ if (document.body) {
 
 // Periodic check for SPA URL path changes
 let lastUrl = window.location.href
-setInterval(() => {
+const urlTimer = setInterval(() => {
+  if (!isContextValid()) {
+    clearInterval(urlTimer)
+    return
+  }
   if (window.location.href !== lastUrl) {
     lastUrl = window.location.href
     handleRoute()

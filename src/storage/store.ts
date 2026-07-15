@@ -7,6 +7,14 @@ import { create } from 'zustand'
 export const ANALYTICS_REFRESH_INTERVAL = 60_000
 export const MAX_HISTORY_POINTS = 50
 
+export function isContextValid(): boolean {
+  try {
+    return typeof chrome !== 'undefined' && !!chrome.runtime && !!chrome.runtime.id
+  } catch {
+    return false
+  }
+}
+
 export const PROVIDER_IDENTITY: Record<ProviderId, { letter: string; color: string; name: string }> = {
   chatgpt: { letter: 'G', color: '#10b981', name: 'ChatGPT' },
   claude: { letter: 'C', color: '#f59e0b', name: 'Claude' },
@@ -161,8 +169,12 @@ function scheduleWrite(getState: () => TraceStore) {
   if (writeTimer) clearTimeout(writeTimer)
   writeTimer = setTimeout(async () => {
     writeTimer = null
+    if (!isContextValid()) return
     try { await chrome.storage.local.set({ trace_state: getState().providers }) }
-    catch (err) { console.warn('[Trace Store] write failed:', err) }
+    catch (err) {
+      if (err instanceof Error && err.message.includes('context invalidated')) return
+      console.warn('[Trace Store] write failed:', err)
+    }
   }, 1_500)
 }
 
@@ -177,6 +189,7 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
 
   init: async () => {
     await get().loadFromStorage()
+    if (!isContextValid()) return
     try {
       chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName === 'local' && changes.trace_state) {
@@ -187,11 +200,13 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
         }
       })
     } catch (e) {
+      if (e instanceof Error && e.message.includes('context invalidated')) return
       console.warn('[Trace Store] onChanged listener failed:', e)
     }
   },
 
   loadFromStorage: async () => {
+    if (!isContextValid()) return
     try {
       const result = await chrome.storage.local.get('trace_state')
       if (!result.trace_state) return
@@ -214,13 +229,20 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
         })
       ) as Record<ProviderId, ProviderState>
       set({ providers: merged })
-    } catch (err) { console.error('[Trace Store] load failed:', err) }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('context invalidated')) return
+      console.error('[Trace Store] load failed:', err)
+    }
   },
 
   persistToStorage: async () => {
     if (writeTimer) { clearTimeout(writeTimer); writeTimer = null }
+    if (!isContextValid()) return
     try { await chrome.storage.local.set({ trace_state: get().providers }) }
-    catch (err) { console.warn('[Trace Store] persist failed:', err) }
+    catch (err) {
+      if (err instanceof Error && err.message.includes('context invalidated')) return
+      console.warn('[Trace Store] persist failed:', err)
+    }
   },
 
   addTokens: (id, total, input = 0, output = 0) => {
@@ -324,6 +346,10 @@ let engineTimer: ReturnType<typeof setInterval> | null = null
 export function startAnalyticsEngine() {
   if (engineTimer) return
   engineTimer = setInterval(() => {
+    if (!isContextValid()) {
+      stopAnalyticsEngine()
+      return
+    }
     const store = useTraceStore.getState()
     store.checkResets()
     ALL_PROVIDERS.forEach(id => store.refreshAnalytics(id))
