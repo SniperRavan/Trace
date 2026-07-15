@@ -5,7 +5,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useTraceStore } from '@/storage/store'
 import { CompactPanel } from './CompactPanel'
-import type { ProviderId } from '@/providers/logos'
+import { ExpandedPanel } from './ExpandedPanel'
+import type { ProviderId } from '@/storage/store'
 
 interface OverlayAppProps {
   provider: ProviderId
@@ -13,7 +14,8 @@ interface OverlayAppProps {
 }
 
 export function OverlayApp({ provider }: OverlayAppProps) {
-  const { setActiveProvider, activeProvider } = useTraceStore()
+  const setActiveProvider = useTraceStore(s => s.setActiveProvider)
+  const activeProvider = useTraceStore(s => s.activeProvider)
   useEffect(() => {
     if (activeProvider !== provider) setActiveProvider(provider)
   }, [activeProvider, provider, setActiveProvider])
@@ -21,7 +23,9 @@ export function OverlayApp({ provider }: OverlayAppProps) {
 }
 
 function TraceBubble() {
-  const { overlayOpen, toggleOverlay } = useTraceStore()
+  const overlayOpen = useTraceStore(s => s.overlayOpen)
+  const expandedView = useTraceStore(s => s.expandedView)
+  const toggleOverlay = useTraceStore(s => s.toggleOverlay)
 
   const [pos, setPos] = useState({ x: window.innerWidth - 80, y: 16 })
   const [hidden, setHidden] = useState(false)
@@ -30,7 +34,6 @@ function TraceBubble() {
 
   const dragOffset = useRef({ x: 0, y: 0 })
   const didDrag = useRef(false)
-  const bubbleRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const rightClickPending = useRef(false)
 
@@ -54,10 +57,7 @@ function TraceBubble() {
     const onUp = () => setDragging(false)
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [dragging])
 
   const onContextMenu = useCallback((e: React.MouseEvent) => {
@@ -68,20 +68,14 @@ function TraceBubble() {
     setShowMenu(v => !v)
   }, [overlayOpen, toggleOverlay])
 
-  // Close menu on outside click — ignore right-clicks (button === 2)
-  // and ignore clicks that land inside the menu itself
   useEffect(() => {
     if (!showMenu) return
     const handler = (e: MouseEvent) => {
       if (e.button === 2) return
-      if (rightClickPending.current) {
-        rightClickPending.current = false
-        return
-      }
+      if (rightClickPending.current) { rightClickPending.current = false; return }
       if (menuRef.current?.contains(e.target as Node)) return
       setShowMenu(false)
     }
-    // Use mouseup so MenuItem onClick fires first
     window.addEventListener('mouseup', handler, true)
     return () => window.removeEventListener('mouseup', handler, true)
   }, [showMenu])
@@ -92,7 +86,8 @@ function TraceBubble() {
     toggleOverlay()
   }, [toggleOverlay])
 
-  const panelLeft = Math.min(pos.x, window.innerWidth - 280)
+  const panelWidth = expandedView ? 560 : 264
+  const panelLeft = Math.min(pos.x, window.innerWidth - panelWidth - 16)
   const panelTop = pos.y + 62
 
   if (hidden) return null
@@ -100,10 +95,7 @@ function TraceBubble() {
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 2147483647 }}>
       <div
-        ref={bubbleRef}
-        onMouseDown={onMouseDown}
-        onClick={onClick}
-        onContextMenu={onContextMenu}
+        onMouseDown={onMouseDown} onClick={onClick} onContextMenu={onContextMenu}
         style={{
           position: 'absolute', left: pos.x, top: pos.y,
           width: 52, height: 52, borderRadius: 16,
@@ -117,18 +109,8 @@ function TraceBubble() {
           transition: dragging ? 'none' : 'box-shadow 0.2s',
         }}
       >
-        <div style={{
-          position: 'absolute', inset: -4, borderRadius: 20,
-          border: '1.5px solid rgba(99,102,241,0.4)',
-          animation: 'trace-pulse-ring 2.5s ease-in-out infinite',
-          pointerEvents: 'none',
-        }} />
-        <div style={{
-          position: 'absolute', bottom: -3, right: -3,
-          width: 10, height: 10, borderRadius: '50%',
-          background: '#10b981', border: '2px solid #0d0f14',
-          animation: 'trace-breathe 2s ease-in-out infinite',
-        }} />
+        <div style={{ position: 'absolute', inset: -4, borderRadius: 20, border: '1.5px solid rgba(99,102,241,0.4)', animation: 'trace-pulse-ring 2.5s ease-in-out infinite', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -3, right: -3, width: 10, height: 10, borderRadius: '50%', background: '#10b981', border: '2px solid #0d0f14', animation: 'trace-breathe 2s ease-in-out infinite' }} />
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
           <circle cx="11" cy="11" r="9" stroke="rgba(255,255,255,0.2)" strokeWidth="1.2" />
           <path d="M7 11.5 Q9 8 11 11 Q13 14 15 10.5" stroke="#f59e0b" strokeWidth="1.6" strokeLinecap="round" fill="none" />
@@ -138,30 +120,24 @@ function TraceBubble() {
 
       {overlayOpen && (
         <div style={{ position: 'absolute', left: panelLeft, top: panelTop, pointerEvents: 'auto' }}>
-          <CompactPanel />
+          {expandedView ? <ExpandedPanel /> : <CompactPanel />}
         </div>
       )}
 
       {showMenu && (
-        <div
-          ref={menuRef}
-          style={{
-            position: 'absolute', left: pos.x, top: pos.y + 58,
-            background: 'rgba(14,16,22,0.97)',
-            border: '0.5px solid rgba(255,255,255,0.12)',
-            borderRadius: 10, backdropFilter: 'blur(20px)',
-            padding: '4px', minWidth: 148, pointerEvents: 'auto',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-            animation: 'trace-slide-up 0.15s ease-out',
-          }}
-        >
-          <MenuItem label={overlayOpen ? 'Close panel' : 'Open panel'} icon="↗"
-            onClick={() => { toggleOverlay(); setShowMenu(false) }} />
-          <MenuItem label="Snap to corner" icon="◎"
-            onClick={() => { setPos({ x: window.innerWidth - 80, y: 16 }); setShowMenu(false) }} />
+        <div ref={menuRef} style={{
+          position: 'absolute', left: pos.x, top: pos.y + 58,
+          background: 'rgba(14,16,22,0.97)',
+          border: '0.5px solid rgba(255,255,255,0.12)',
+          borderRadius: 10, backdropFilter: 'blur(20px)',
+          padding: '4px', minWidth: 148, pointerEvents: 'auto',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+          animation: 'trace-slide-up 0.15s ease-out',
+        }}>
+          <MenuItem icon="↗" label={overlayOpen ? 'Close panel' : 'Open panel'} onClick={() => { toggleOverlay(); setShowMenu(false) }} />
+          <MenuItem icon="◎" label="Snap to corner" onClick={() => { setPos({ x: window.innerWidth - 80, y: 16 }); setShowMenu(false) }} />
           <div style={{ height: '0.5px', background: 'rgba(255,255,255,0.06)', margin: '4px 0' }} />
-          <MenuItem label="Hide Trace" icon="✕" danger
-            onClick={() => { setHidden(true); setShowMenu(false) }} />
+          <MenuItem icon="✕" label="Hide Trace" danger onClick={() => { setHidden(true); setShowMenu(false) }} />
         </div>
       )}
     </div>
@@ -183,9 +159,7 @@ function MenuItem({ icon, label, onClick, danger = false }: {
         padding: '6px 10px', borderRadius: 7, cursor: 'pointer',
         background: hovered ? 'rgba(255,255,255,0.06)' : 'transparent',
         transition: 'background 0.15s',
-        color: danger
-          ? (hovered ? '#f87171' : 'rgba(248,113,113,0.7)')
-          : 'rgba(255,255,255,0.65)',
+        color: danger ? (hovered ? '#f87171' : 'rgba(248,113,113,0.7)') : 'rgba(255,255,255,0.65)',
         fontSize: 12, userSelect: 'none',
       }}
     >
