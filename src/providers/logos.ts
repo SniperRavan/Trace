@@ -117,9 +117,7 @@ export const FALLBACK_SVGS: Record<ProviderId, string> = {
 
   claude: `
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M13.827 3.52h-3.654L5.443 20.5h3.167l1.14-3.2h4.5l1.14 3.2h3.167L13.827 3.52Z
-               M10.777 14.5l1.473-4.13 1.473 4.13h-2.946Z"
-        fill="#f59e0b"/>
+      <path d="M16 6a5.5 5.5 0 0 0-9 4.24v3.52a5.5 5.5 0 0 0 9 4.24" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round" fill="none"/>
     </svg>`,
 
   gemini: `
