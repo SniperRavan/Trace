@@ -10,6 +10,7 @@ import {
   type ProviderId,
 } from '@/storage/store'
 import { formatTokens, formatResetTime } from '@/tracking/estimator'
+import { ProviderLogo } from '@/components/ui/ProviderLogo'
 
 const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity']
 
@@ -24,21 +25,7 @@ function useCountdown(resetAt: number): string {
   return text
 }
 
-function ProviderIcon({ id, size = 26 }: { id: ProviderId; size?: number }) {
-  const { letter, color } = PROVIDER_IDENTITY[id]
-  return (
-    <div style={{
-      width: size, height: size,
-      borderRadius: Math.round(size * 0.33),
-      background: `${color}20`,
-      border: `1px solid ${color}40`,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      flexShrink: 0,
-    }}>
-      <span style={{ fontSize: size * 0.45, fontWeight: 600, color, lineHeight: 1 }}>{letter}</span>
-    </div>
-  )
-}
+
 
 function PanelHeader() {
   const total = useTraceStore(s =>
@@ -80,7 +67,7 @@ function ProviderRow({ id }: { id: ProviderId }) {
       onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
-      <ProviderIcon id={id} size={26} />
+      <ProviderLogo provider={id} size={26} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.72)', marginBottom: 4 }}>{name}</div>
         <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
