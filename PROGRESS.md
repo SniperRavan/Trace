@@ -82,18 +82,18 @@ No real tracking occurs yet — all provider adapters are stubs.
 
 ---
 
-## Next Immediate Steps (Phase 2)
+## Phase 2 — Complete ✅
 
-Priority order:
-
-1. **Floating bubble polish** — Framer Motion spring animations, drag-to-reposition
-2. **Compact popup component** — Layer 2 from the visual mockup
-3. **ChatGPT adapter** — DOM observer for message sends, quota DOM extraction
-4. **Claude adapter** — DOM observer, usage bar parsing if available
-5. **Token estimation engine** — `src/tracking/estimator.ts`
-6. **Expanded analytics view** — Layer 3, mini sparkline graphs
-7. **Theme engine** — CSS variable swapping for Catppuccin / Nord / Tokyo Night
-8. **storage.local sync** — persist usage across browser sessions
+All major fixes and E2E/Unit testing frameworks are complete:
+- [x] **Double % Sign**: Fixed trailing % inside the JSX tag.
+- [x] **Gemini Interceptor Fix**: Added support for escaped inner JSON parsing and tracking.
+- [x] **Grok SPA Injection Fix**: Added global x.com matches and path-change listener router.
+- [x] **CORS Favicon Fetch**: Added Google Favicon CDN host permissions.
+- [x] **Tokenizer Bundle Size Fix**: Replaced heavy `gpt-tokenizer` with a lightweight 3.8 char heuristic.
+- [x] **Stuck Countdown & Quota Reset**: Implemented periodic checkResets action inside the analytics engine.
+- [x] **Expanded HUD & SVG Sparklines**: Created ExpandedPanel component with custom SVG sparkline charts.
+- [x] **Unit Testing Suite**: Configured Vitest to run store and estimator test cases.
+- [x] **E2E Testing Suite**: Configured Playwright to test unpacked extension loading.
 
 ---
 
