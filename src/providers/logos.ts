@@ -170,8 +170,9 @@ const FAVICON_CDN = (domain: string, size = 64) =>
 const logoCache = new Map<ProviderId, string>()
 
 /**
- * Fetches a logo URL for a provider, using Google's S2 favicon service.
- * Returns a blob object URL that can be used as an <img> src.
+ * Fetches a logo URL for a provider by querying the extension's background script.
+ * This bypasses strict Content Security Policies (CSP) on hosts like Perplexity AI.
+ * Returns a Base64 data URL that can be used directly as an <img> src.
  * Throws if the fetch fails — callers should handle gracefully.
  */
 export async function fetchProviderLogo(id: ProviderId): Promise<string> {
@@ -180,19 +181,29 @@ export async function fetchProviderLogo(id: ProviderId): Promise<string> {
   }
 
   const provider = PROVIDERS[id]
-  const url = FAVICON_CDN(provider.domain, 64)
 
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`Logo fetch failed: ${response.status}`)
+  return new Promise((resolve, reject) => {
+    if (typeof chrome === 'undefined' || !chrome.runtime || !chrome.runtime.sendMessage) {
+      reject(new Error('Extension runtime unavailable'))
+      return
+    }
 
-  const blob = await response.blob()
-
-  // Validate it's actually an image (S2 sometimes returns a 1x1 placeholder)
-  if (blob.size < 200) throw new Error('Logo too small — likely placeholder')
-
-  const objectUrl = URL.createObjectURL(blob)
-  logoCache.set(id, objectUrl)
-  return objectUrl
+    chrome.runtime.sendMessage(
+      { type: 'TRACE_FETCH_LOGO', payload: { domain: provider.domain } },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message))
+          return
+        }
+        if (response && response.success) {
+          logoCache.set(id, response.dataUrl)
+          resolve(response.dataUrl)
+        } else {
+          reject(new Error(response?.error || 'Failed to fetch logo from background'))
+        }
+      }
+    )
+  })
 }
 
 /**
