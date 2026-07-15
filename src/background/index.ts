@@ -46,7 +46,26 @@ browser.alarms.onAlarm.addListener((alarm) => {
 // Content scripts send usage updates here → we persist to storage.local.
 // This pattern keeps storage writes in one place and avoids race conditions.
 
-browser.runtime.onMessage.addListener((message, _sender) => {
+async function fetchBase64Logo(domain: string): Promise<string> {
+  const url = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
+  const response = await fetch(url)
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+  const buffer = await response.arrayBuffer()
+  if (buffer.byteLength < 200) throw new Error('Favicon too small (generic)')
+
+  let binary = ''
+  const bytes = new Uint8Array(buffer)
+  const len = bytes.byteLength
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  const base64 = btoa(binary)
+  const mime = response.headers.get('content-type') || 'image/png'
+  return `data:${mime};base64,${base64}`
+}
+
+browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'TRACE_USAGE_UPDATE') {
     // Phase 2: validate and write to storage.local
     console.debug('[Trace] Usage update received:', message.payload)
@@ -54,7 +73,14 @@ browser.runtime.onMessage.addListener((message, _sender) => {
 
   if (message.type === 'TRACE_REQUEST_STATE') {
     // Popup is asking for current state — read from storage and return.
-    return browser.storage.local.get('trace_usage')
+    return browser.storage.local.get('trace_usage') as any
+  }
+
+  if (message.type === 'TRACE_FETCH_LOGO') {
+    fetchBase64Logo(message.payload.domain)
+      .then(dataUrl => sendResponse({ success: true, dataUrl }))
+      .catch(err => sendResponse({ success: false, error: err.message }))
+    return true // keeps the message channel open for asynchronous response
   }
 })
 
