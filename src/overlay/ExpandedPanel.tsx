@@ -14,6 +14,7 @@ import {
   type ThemeName,
 } from '@/storage/store'
 import { formatTokens, formatResetTime } from '@/tracking/estimator'
+import { ProviderLogo } from '@/components/ui/ProviderLogo'
 
 const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity']
 const THEMES: { id: ThemeName; name: string }[] = [
@@ -165,11 +166,16 @@ export function ExpandedPanel() {
                 onMouseEnter={e => !active && (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
                 onMouseLeave={e => !active && (e.currentTarget.style.background = 'transparent')}
               >
-                <div style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: state.isActive ? '#10b981' : 'rgba(255,255,255,0.1)',
-                  boxShadow: state.isActive ? '0 0 6px #10b98199' : 'none',
-                }} />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ProviderLogo provider={id} size={18} />
+                  {state.isActive && (
+                    <div style={{
+                      position: 'absolute', bottom: -2, right: -2,
+                      width: 6, height: 6, borderRadius: '50%',
+                      background: '#10b981', border: '1px solid #0d0f14',
+                    }} />
+                  )}
+                </div>
                 
                 <span style={{
                   fontSize: 12,
@@ -237,6 +243,7 @@ export function ExpandedPanel() {
           justifyContent: 'space-between',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ProviderLogo provider={selectedId} size={22} />
             <span style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
               {meta.name} Detailed Usage
             </span>
