@@ -9,8 +9,23 @@ export class PerplexityAdapter implements ProviderAdapter {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail
       if (detail?.provider !== 'perplexity') return
-      const { inputTokens = 0, outputTokens = 0, totalTokens = 0 } = detail
-      useTraceStore.getState().addTokens('perplexity', totalTokens || inputTokens + outputTokens, inputTokens, outputTokens)
+      
+      let inputTokens = detail.inputTokens ?? 0
+      let outputTokens = detail.outputTokens ?? 0
+
+      if (!inputTokens && !outputTokens) {
+        if (detail.userText) {
+          inputTokens = Math.ceil(detail.userText.length / 3.8)
+        }
+        if (detail.assistantText) {
+          outputTokens = Math.ceil(detail.assistantText.length / 3.8)
+        }
+      }
+
+      const totalTokens = detail.totalTokens || (inputTokens + outputTokens)
+      if (totalTokens <= 0) return
+
+      useTraceStore.getState().addTokens('perplexity', totalTokens, inputTokens, outputTokens)
       console.log('[Trace] PerplexityAdapter intercepted — in:', inputTokens, 'out:', outputTokens)
     }
     window.addEventListener('trace:tokens', handler)
