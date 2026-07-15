@@ -26,10 +26,10 @@ describe('Estimator Heuristics', () => {
     const now = Date.now()
     expect(formatResetTime(now - 1000)).toBe('resetting')
     
-    const oneHourFromNow = now + 60 * 60 * 1000
+    const oneHourFromNow = now + 60 * 60 * 1000 + 5000
     expect(formatResetTime(oneHourFromNow)).toBe('1h')
 
-    const minutesFromNow = now + 45 * 60 * 1000
+    const minutesFromNow = now + 45 * 60 * 1000 + 5000
     expect(formatResetTime(minutesFromNow)).toBe('45m')
   })
 })
