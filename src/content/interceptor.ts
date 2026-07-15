@@ -364,5 +364,88 @@
     return origSend.apply(this, [body] as any)
   }
 
+  // ════════════════════════════════════════════════════════════════
+  // WEBSOCKET INTERCEPTION (e.g. for Perplexity)
+  // ════════════════════════════════════════════════════════════════
+  try {
+    const OriginalWebSocket = window.WebSocket
+    const PatchedWebSocket = function(this: any, url: string | URL, protocols?: string | string[]) {
+      const urlStr = String(url)
+      const ws = new OriginalWebSocket(url, protocols)
+      
+      if (urlStr.includes('perplexity.ai') || window.location.hostname.includes('perplexity.ai')) {
+        let assistantText = ''
+        let dispatchTimer: any = null
+        
+        const throttleDispatch = () => {
+          if (dispatchTimer) clearTimeout(dispatchTimer)
+          dispatchTimer = setTimeout(() => {
+            if (assistantText) {
+              dispatch('perplexity', { userText: '', assistantText })
+            }
+          }, 1000)
+        }
+        
+        ws.addEventListener('message', (event) => {
+          try {
+            const data = event.data
+            if (typeof data !== 'string') return
+            
+            let jsonContent = data
+            if (data.startsWith('42')) {
+              jsonContent = data.slice(2)
+            }
+            
+            if (jsonContent.startsWith('[') || jsonContent.startsWith('{')) {
+              const parsed = JSON.parse(jsonContent)
+              
+              const findText = (node: any): string => {
+                if (!node) return ''
+                if (typeof node === 'string') return ''
+                if (typeof node.text === 'string') return node.text
+                if (typeof node.answer === 'string') return node.answer
+                if (typeof node.output === 'string') return node.output
+                if (typeof node.completion === 'string') return node.completion
+                if (Array.isArray(node)) {
+                  for (const child of node) {
+                    const t = findText(child)
+                    if (t) return t
+                  }
+                }
+                if (typeof node === 'object') {
+                  for (const key in node) {
+                    const t = findText(node[key])
+                    if (t) return t
+                  }
+                }
+                return ''
+              }
+              
+              const text = findText(parsed)
+              if (text && text.length > assistantText.length) {
+                assistantText = text
+                throttleDispatch()
+              }
+            }
+          } catch {}
+        })
+        
+        ws.addEventListener('close', () => {
+          if (dispatchTimer) clearTimeout(dispatchTimer)
+          if (assistantText) {
+            dispatch('perplexity', { userText: '', assistantText })
+          }
+        })
+      }
+      
+      return ws
+    } as any
+    
+    PatchedWebSocket.prototype = OriginalWebSocket.prototype
+    window.WebSocket = PatchedWebSocket
+  } catch (e) {
+    log('WebSocket patch failed:', e)
+  }
+
   log('interceptor installed on', window.location.hostname, '(text-extraction mode)')
 })()
