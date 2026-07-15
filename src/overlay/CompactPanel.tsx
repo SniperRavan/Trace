@@ -96,6 +96,7 @@ function ProviderRow({ id }: { id: ProviderId }) {
 }
 
 export function CompactPanel() {
+  const setExpandedView = useTraceStore(s => s.setExpandedView)
   return (
     <div style={{
       width: 264,
@@ -118,7 +119,12 @@ export function CompactPanel() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.15)' }}>all providers · local estimate · no cloud</span>
-        <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: 'rgba(99,102,241,0.1)', color: 'rgba(129,140,248,0.7)', border: '0.5px solid rgba(99,102,241,0.18)' }}>↗ expand</span>
+        <span
+          onClick={() => setExpandedView(true)}
+          style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: 'rgba(99,102,241,0.1)', color: 'rgba(129,140,248,0.7)', border: '0.5px solid rgba(99,102,241,0.18)', cursor: 'pointer' }}
+        >
+          ↗ expand
+        </span>
       </div>
     </div>
   )
