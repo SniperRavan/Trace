@@ -1,19 +1,101 @@
 /**
  * src/overlay/CompactPanel.tsx
- * Phase 2 — compact popup panel with all provider rows.
  */
 
-import { useTraceStore } from '@/storage/store'
-import { PROVIDERS, type ProviderId } from '@/providers/logos'
-import { ProviderLogo } from '@/components/ui/ProviderLogo'
+import { useState, useEffect } from 'react'
+import {
+  useTraceStore,
+  PROVIDER_IDENTITY,
+  getSessionPercent,
+  type ProviderId,
+} from '@/storage/store'
 import { formatTokens, formatResetTime } from '@/tracking/estimator'
 
 const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity']
 
-export function CompactPanel() {
-  const providers = useTraceStore(s => s.providers)
-  const totalTokens = PANEL_PROVIDERS.reduce((sum, id) => sum + providers[id].tokensUsed, 0)
+function useCountdown(resetAt: number): string {
+  const [text, setText] = useState(() => formatResetTime(resetAt))
+  useEffect(() => {
+    const update = () => setText(formatResetTime(resetAt))
+    update()
+    const iv = setInterval(update, 1000)
+    return () => clearInterval(iv)
+  }, [resetAt])
+  return text
+}
 
+function ProviderIcon({ id, size = 26 }: { id: ProviderId; size?: number }) {
+  const { letter, color } = PROVIDER_IDENTITY[id]
+  return (
+    <div style={{
+      width: size, height: size,
+      borderRadius: Math.round(size * 0.33),
+      background: `${color}20`,
+      border: `1px solid ${color}40`,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexShrink: 0,
+    }}>
+      <span style={{ fontSize: size * 0.45, fontWeight: 600, color, lineHeight: 1 }}>{letter}</span>
+    </div>
+  )
+}
+
+function PanelHeader() {
+  const total = useTraceStore(s =>
+    PANEL_PROVIDERS.reduce((sum, id) => sum + s.providers[id].totalTokens, 0)
+  )
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '11px 14px 9px',
+      borderBottom: '0.5px solid rgba(255,255,255,0.05)',
+    }}>
+      <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.7px', textTransform: 'uppercase' }}>
+        Trace
+      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+        <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', animation: 'trace-breathe 2s ease-in-out infinite' }} />
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>{formatTokens(total)} today</span>
+      </div>
+    </div>
+  )
+}
+
+function ProviderRow({ id }: { id: ProviderId }) {
+  const state = useTraceStore(s => s.providers[id])
+  const { name, color } = PROVIDER_IDENTITY[id]
+  const rawPct = getSessionPercent(state)
+  const used = state.sessionUsage.used
+  const pct = rawPct
+  const showSliver = used > 0 && rawPct === 0
+  const barPct = showSliver ? 0.6 : rawPct
+  const label = showSliver ? '<1%' : `${rawPct}%`
+  const barColor = pct >= 80 ? 'rgba(248,113,113,0.9)' : color
+  const pctColor = pct >= 80 ? '#f87171' : 'rgba(255,255,255,0.55)'
+  const countdown = useCountdown(state.sessionUsage.resetAt)
+
+  return (
+    <div
+      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', transition: 'background 0.15s', cursor: 'default' }}
+      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+    >
+      <ProviderIcon id={id} size={26} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.72)', marginBottom: 4 }}>{name}</div>
+        <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${barPct}%`, borderRadius: 3, background: barColor, boxShadow: `0 0 6px ${barColor}55`, transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)' }} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+        <span style={{ fontSize: 12, fontWeight: 500, color: pctColor, fontVariantNumeric: 'tabular-nums' }}>{label}</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', fontVariantNumeric: 'tabular-nums' }}>{countdown}</span>
+      </div>
+    </div>
+  )
+}
+
+export function CompactPanel() {
   return (
     <div style={{
       width: 264,
@@ -26,118 +108,17 @@ export function CompactPanel() {
       fontFamily: 'Inter, system-ui, sans-serif',
       animation: 'trace-slide-up 0.18s ease-out',
     }}>
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '11px 14px 9px',
-        borderBottom: '0.5px solid rgba(255,255,255,0.05)',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.7px', textTransform: 'uppercase' }}>
-            Trace
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-          <div style={{
-            width: 5, height: 5, borderRadius: '50%',
-            background: '#10b981',
-            animation: 'trace-breathe 2s ease-in-out infinite',
-          }} />
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>
-            {formatTokens(totalTokens)} today
-          </span>
-        </div>
-      </div>
-
-      {/* Provider rows */}
+      <PanelHeader />
       <div style={{ padding: '6px 0' }}>
-        {PANEL_PROVIDERS.map(id => (
-          <ProviderRow key={id} id={id} />
-        ))}
+        {PANEL_PROVIDERS.map(id => <ProviderRow key={id} id={id} />)}
       </div>
-
-      {/* Footer */}
       <div style={{
         padding: '7px 14px 9px',
         borderTop: '0.5px solid rgba(255,255,255,0.05)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.15)' }}>
-          local estimate · no cloud
-        </span>
-        <span style={{
-          fontSize: 10,
-          padding: '2px 7px',
-          borderRadius: 10,
-          background: 'rgba(99,102,241,0.1)',
-          color: 'rgba(129,140,248,0.7)',
-          border: '0.5px solid rgba(99,102,241,0.18)',
-        }}>
-          ↗ expand
-        </span>
-      </div>
-    </div>
-  )
-}
-
-function ProviderRow({ id }: { id: ProviderId }) {
-  const usage = useTraceStore(s => s.providers[id])
-  const meta = PROVIDERS[id]
-  const pct = usage.quotaPercentUsed
-  const isHigh = pct >= 80
-  const isMed = pct >= 50 && pct < 80
-
-  const barColor = isHigh
-    ? 'rgba(248,113,113,0.9)'
-    : isMed
-      ? meta.color
-      : meta.color
-
-  const pctColor = isHigh ? '#f87171' : 'rgba(255,255,255,0.55)'
-
-  return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10,
-      padding: '7px 14px',
-      transition: 'background 0.15s',
-    }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
-      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-    >
-      {/* Icon */}
-      <ProviderLogo provider={id} size={26} />
-
-      {/* Name + bar */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.72)', marginBottom: 4 }}>
-          {meta.name}
-        </div>
-        <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
-          <div style={{
-            height: '100%',
-            width: `${pct}%`,
-            borderRadius: 3,
-            background: barColor,
-            boxShadow: `0 0 6px ${barColor}55`,
-            transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)',
-          }} />
-        </div>
-      </div>
-
-      {/* Meta */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-        <span style={{ fontSize: 12, fontWeight: 500, color: pctColor, fontVariantNumeric: 'tabular-nums' }}>
-          {pct}%
-        </span>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', fontVariantNumeric: 'tabular-nums' }}>
-          {formatResetTime(usage.resetAt)}
-        </span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.15)' }}>all providers · local estimate · no cloud</span>
+        <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: 'rgba(99,102,241,0.1)', color: 'rgba(129,140,248,0.7)', border: '0.5px solid rgba(99,102,241,0.18)' }}>↗ expand</span>
       </div>
     </div>
   )
