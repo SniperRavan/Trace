@@ -4,6 +4,7 @@ import { resolve } from 'path'
 export default defineConfig({
   test: {
     setupFiles: ['./tests/setup.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/tests/extension.spec.ts'],
     alias: {
       '@': resolve(__dirname, './src'),
     },
