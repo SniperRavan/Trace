@@ -1,20 +1,30 @@
 import { useTraceStore } from '@/storage/store'
-import type { ProviderAdapter } from './index'
+import { countTokens } from '@/tracking/estimator'
+import { type ProviderAdapter, listenForTraceEvents } from './index'
 
 export class GrokAdapter implements ProviderAdapter {
   private cleanupFns: (() => void)[] = []
 
   start() {
     useTraceStore.getState().updateUsage('grok', { isActive: true })
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail
-      if (detail?.provider !== 'grok') return
-      const { inputTokens = 0, outputTokens = 0, totalTokens = 0 } = detail
-      useTraceStore.getState().addTokens('grok', totalTokens || inputTokens + outputTokens, inputTokens, outputTokens)
-      console.log('[Trace] GrokAdapter intercepted — in:', inputTokens, 'out:', outputTokens)
-    }
-    window.addEventListener('trace:tokens', handler)
-    this.cleanupFns.push(() => window.removeEventListener('trace:tokens', handler))
+
+    const cleanupListener = listenForTraceEvents('grok', (detail) => {
+      let inputTokens = detail.inputTokens ?? 0
+      let outputTokens = detail.outputTokens ?? 0
+
+      if (!inputTokens && !outputTokens) {
+        if (detail.userText) inputTokens = countTokens(detail.userText)
+        if (detail.assistantText) outputTokens = countTokens(detail.assistantText)
+      }
+
+      const totalTokens = detail.totalTokens || inputTokens + outputTokens
+      if (totalTokens <= 0) return
+
+      useTraceStore.getState().addTokens('grok', totalTokens, inputTokens, outputTokens)
+      console.log('[Trace] GrokAdapter +', totalTokens, 'tokens (in:', inputTokens, 'out:', outputTokens, ')')
+    })
+
+    this.cleanupFns.push(cleanupListener)
     console.log('[Trace] GrokAdapter started')
   }
 
