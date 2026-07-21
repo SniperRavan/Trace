@@ -4,7 +4,7 @@
 
 import { useTraceStore } from '@/storage/store'
 import { countTokens } from '@/tracking/estimator'
-import type { ProviderAdapter } from './index'
+import { type ProviderAdapter, listenForTraceEvents } from './index'
 
 export class ClaudeAdapter implements ProviderAdapter {
   private cleanupFns: (() => void)[] = []
@@ -12,10 +12,7 @@ export class ClaudeAdapter implements ProviderAdapter {
   start() {
     useTraceStore.getState().updateUsage('claude', { isActive: true })
 
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail
-      if (detail?.provider !== 'claude') return
-
+    const cleanupListener = listenForTraceEvents('claude', (detail) => {
       let input = detail.inputTokens ?? 0
       let output = detail.outputTokens ?? 0
 
@@ -29,10 +26,9 @@ export class ClaudeAdapter implements ProviderAdapter {
 
       useTraceStore.getState().addTokens('claude', total, input, output)
       console.log('[Trace] ClaudeAdapter +', total, 'tokens (in:', input, 'out:', output, ')')
-    }
+    })
 
-    window.addEventListener('trace:tokens', handler)
-    this.cleanupFns.push(() => window.removeEventListener('trace:tokens', handler))
+    this.cleanupFns.push(cleanupListener)
     console.log('[Trace] ClaudeAdapter started')
   }
 
