@@ -4,7 +4,7 @@
 
 import { useTraceStore } from '@/storage/store'
 import { countTokens } from '@/tracking/estimator'
-import type { ProviderAdapter } from './index'
+import { type ProviderAdapter, listenForTraceEvents } from './index'
 
 export class ChatGPTAdapter implements ProviderAdapter {
   private cleanupFns: (() => void)[] = []
@@ -12,10 +12,7 @@ export class ChatGPTAdapter implements ProviderAdapter {
   start() {
     useTraceStore.getState().updateUsage('chatgpt', { isActive: true })
 
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail
-      if (detail?.provider !== 'chatgpt') return
-
+    const cleanupListener = listenForTraceEvents('chatgpt', (detail) => {
       let input = detail.inputTokens ?? 0
       let output = detail.outputTokens ?? 0
 
@@ -29,10 +26,9 @@ export class ChatGPTAdapter implements ProviderAdapter {
 
       useTraceStore.getState().addTokens('chatgpt', total, input, output)
       console.log('[Trace] ChatGPTAdapter +', total, 'tokens (in:', input, 'out:', output, ')')
-    }
+    })
 
-    window.addEventListener('trace:tokens', handler)
-    this.cleanupFns.push(() => window.removeEventListener('trace:tokens', handler))
+    this.cleanupFns.push(cleanupListener)
     console.log('[Trace] ChatGPTAdapter started')
   }
 
