@@ -1,20 +1,30 @@
 import { useTraceStore } from '@/storage/store'
-import type { ProviderAdapter } from './index'
+import { countTokens } from '@/tracking/estimator'
+import { type ProviderAdapter, listenForTraceEvents } from './index'
 
 export class GeminiAdapter implements ProviderAdapter {
   private cleanupFns: (() => void)[] = []
 
   start() {
     useTraceStore.getState().updateUsage('gemini', { isActive: true })
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail
-      if (detail?.provider !== 'gemini') return
-      const { inputTokens = 0, outputTokens = 0, totalTokens = 0 } = detail
-      useTraceStore.getState().addTokens('gemini', totalTokens || inputTokens + outputTokens, inputTokens, outputTokens)
-      console.log('[Trace] GeminiAdapter intercepted — in:', inputTokens, 'out:', outputTokens)
-    }
-    window.addEventListener('trace:tokens', handler)
-    this.cleanupFns.push(() => window.removeEventListener('trace:tokens', handler))
+
+    const cleanupListener = listenForTraceEvents('gemini', (detail) => {
+      let inputTokens = detail.inputTokens ?? 0
+      let outputTokens = detail.outputTokens ?? 0
+
+      if (!inputTokens && !outputTokens) {
+        if (detail.userText) inputTokens = countTokens(detail.userText)
+        if (detail.assistantText) outputTokens = countTokens(detail.assistantText)
+      }
+
+      const totalTokens = detail.totalTokens || inputTokens + outputTokens
+      if (totalTokens <= 0) return
+
+      useTraceStore.getState().addTokens('gemini', totalTokens, inputTokens, outputTokens)
+      console.log('[Trace] GeminiAdapter +', totalTokens, 'tokens (in:', inputTokens, 'out:', outputTokens, ')')
+    })
+
+    this.cleanupFns.push(cleanupListener)
     console.log('[Trace] GeminiAdapter started')
   }
 
