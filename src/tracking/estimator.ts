@@ -2,10 +2,16 @@
  * src/tracking/estimator.ts
  */
 
+import { encode } from 'gpt-tokenizer'
+
 export function countTokens(text: string): number {
   if (!text) return 0
-  // Heuristic for English: ~3.8 characters per token
-  return Math.ceil(text.length / 3.8)
+  try {
+    return encode(text).length
+  } catch {
+    // Fallback heuristic: ~3.8 characters per token
+    return Math.ceil(text.length / 3.8)
+  }
 }
 
 export function estimateTokens(text: string): number {
