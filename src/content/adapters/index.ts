@@ -46,5 +46,7 @@ export async function createProviderAdapter(provider: ProviderId): Promise<Provi
   if (provider === 'gemini') { const { GeminiAdapter } = await import('./gemini'); return new GeminiAdapter() }
   if (provider === 'grok') { const { GrokAdapter } = await import('./grok'); return new GrokAdapter() }
   if (provider === 'perplexity') { const { PerplexityAdapter } = await import('./perplexity'); return new PerplexityAdapter() }
+  if (provider === 'deepseek') { const { DeepSeekAdapter } = await import('./deepseek'); return new DeepSeekAdapter() }
+  if (provider === 'meta') { const { MetaAdapter } = await import('./meta_ai'); return new MetaAdapter() }
   return new StubAdapter(provider)
 }

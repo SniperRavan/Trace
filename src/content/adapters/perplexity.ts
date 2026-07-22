@@ -9,6 +9,10 @@ export class PerplexityAdapter implements ProviderAdapter {
     useTraceStore.getState().updateUsage('perplexity', { isActive: true })
 
     const cleanupListener = listenForTraceEvents('perplexity', (detail) => {
+      if (detail.modelName) {
+        useTraceStore.getState().setActiveModel('perplexity', detail.modelName, detail.contextLimit)
+      }
+
       let inputTokens = detail.inputTokens ?? 0
       let outputTokens = detail.outputTokens ?? 0
 

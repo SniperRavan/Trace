@@ -9,6 +9,10 @@ export class GrokAdapter implements ProviderAdapter {
     useTraceStore.getState().updateUsage('grok', { isActive: true })
 
     const cleanupListener = listenForTraceEvents('grok', (detail) => {
+      if (detail.modelName) {
+        useTraceStore.getState().setActiveModel('grok', detail.modelName, detail.contextLimit)
+      }
+
       let inputTokens = detail.inputTokens ?? 0
       let outputTokens = detail.outputTokens ?? 0
 

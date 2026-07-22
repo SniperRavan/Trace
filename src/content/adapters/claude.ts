@@ -13,6 +13,16 @@ export class ClaudeAdapter implements ProviderAdapter {
     useTraceStore.getState().updateUsage('claude', { isActive: true })
 
     const cleanupListener = listenForTraceEvents('claude', (detail) => {
+      if (detail.modelName) {
+        useTraceStore.getState().setActiveModel('claude', detail.modelName, detail.contextLimit)
+      }
+
+      if (detail.isExactUsage) {
+        useTraceStore.getState().setExactUsage('claude', detail.sessionPct, detail.weeklyPct, detail.resetAtMs)
+        console.log('[Trace] ClaudeAdapter updated exact usage:', detail)
+        return
+      }
+
       let input = detail.inputTokens ?? 0
       let output = detail.outputTokens ?? 0
 

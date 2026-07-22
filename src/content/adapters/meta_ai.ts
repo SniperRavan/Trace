@@ -1,20 +1,20 @@
 /**
- * src/content/adapters/chatgpt.ts
+ * src/content/adapters/meta_ai.ts
  */
 
 import { useTraceStore } from '@/storage/store'
 import { countTokens } from '@/tracking/estimator'
 import { type ProviderAdapter, listenForTraceEvents } from './index'
 
-export class ChatGPTAdapter implements ProviderAdapter {
+export class MetaAdapter implements ProviderAdapter {
   private cleanupFns: (() => void)[] = []
 
   start() {
-    useTraceStore.getState().updateUsage('chatgpt', { isActive: true })
+    useTraceStore.getState().updateUsage('meta', { isActive: true })
 
-    const cleanupListener = listenForTraceEvents('chatgpt', (detail) => {
+    const cleanupListener = listenForTraceEvents('meta', (detail) => {
       if (detail.modelName) {
-        useTraceStore.getState().setActiveModel('chatgpt', detail.modelName, detail.contextLimit)
+        useTraceStore.getState().setActiveModel('meta', detail.modelName, detail.contextLimit)
       }
 
       let input = detail.inputTokens ?? 0
@@ -28,16 +28,16 @@ export class ChatGPTAdapter implements ProviderAdapter {
       const total = detail.totalTokens || input + output
       if (total <= 0) return
 
-      useTraceStore.getState().addTokens('chatgpt', total, input, output)
-      console.log('[Trace] ChatGPTAdapter +', total, 'tokens (in:', input, 'out:', output, ')')
+      useTraceStore.getState().addTokens('meta', total, input, output)
+      console.log('[Trace] MetaAdapter +', total, 'tokens (in:', input, 'out:', output, ')')
     })
 
     this.cleanupFns.push(cleanupListener)
-    console.log('[Trace] ChatGPTAdapter started')
+    console.log('[Trace] MetaAdapter started')
   }
 
   stop() {
     this.cleanupFns.forEach(fn => fn())
-    useTraceStore.getState().updateUsage('chatgpt', { isActive: false })
+    useTraceStore.getState().updateUsage('meta', { isActive: false })
   }
 }

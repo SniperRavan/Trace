@@ -9,6 +9,10 @@ export class GeminiAdapter implements ProviderAdapter {
     useTraceStore.getState().updateUsage('gemini', { isActive: true })
 
     const cleanupListener = listenForTraceEvents('gemini', (detail) => {
+      if (detail.modelName) {
+        useTraceStore.getState().setActiveModel('gemini', detail.modelName, detail.contextLimit)
+      }
+
       let inputTokens = detail.inputTokens ?? 0
       let outputTokens = detail.outputTokens ?? 0
 

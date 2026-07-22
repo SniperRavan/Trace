@@ -1,20 +1,20 @@
 /**
- * src/content/adapters/chatgpt.ts
+ * src/content/adapters/deepseek.ts
  */
 
 import { useTraceStore } from '@/storage/store'
 import { countTokens } from '@/tracking/estimator'
 import { type ProviderAdapter, listenForTraceEvents } from './index'
 
-export class ChatGPTAdapter implements ProviderAdapter {
+export class DeepSeekAdapter implements ProviderAdapter {
   private cleanupFns: (() => void)[] = []
 
   start() {
-    useTraceStore.getState().updateUsage('chatgpt', { isActive: true })
+    useTraceStore.getState().updateUsage('deepseek', { isActive: true })
 
-    const cleanupListener = listenForTraceEvents('chatgpt', (detail) => {
+    const cleanupListener = listenForTraceEvents('deepseek', (detail) => {
       if (detail.modelName) {
-        useTraceStore.getState().setActiveModel('chatgpt', detail.modelName, detail.contextLimit)
+        useTraceStore.getState().setActiveModel('deepseek', detail.modelName, detail.contextLimit)
       }
 
       let input = detail.inputTokens ?? 0
@@ -28,16 +28,16 @@ export class ChatGPTAdapter implements ProviderAdapter {
       const total = detail.totalTokens || input + output
       if (total <= 0) return
 
-      useTraceStore.getState().addTokens('chatgpt', total, input, output)
-      console.log('[Trace] ChatGPTAdapter +', total, 'tokens (in:', input, 'out:', output, ')')
+      useTraceStore.getState().addTokens('deepseek', total, input, output)
+      console.log('[Trace] DeepSeekAdapter +', total, 'tokens (in:', input, 'out:', output, ')')
     })
 
     this.cleanupFns.push(cleanupListener)
-    console.log('[Trace] ChatGPTAdapter started')
+    console.log('[Trace] DeepSeekAdapter started')
   }
 
   stop() {
     this.cleanupFns.forEach(fn => fn())
-    useTraceStore.getState().updateUsage('chatgpt', { isActive: false })
+    useTraceStore.getState().updateUsage('deepseek', { isActive: false })
   }
 }
