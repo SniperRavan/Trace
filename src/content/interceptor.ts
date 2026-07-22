@@ -25,9 +25,77 @@
       url.includes('claude.ai') ||
       url.includes('chatgpt.com') || url.includes('chat.openai.com') ||
       url.includes('gemini.google.com') ||
-      url.includes('x.com') ||
-      url.includes('perplexity.ai')
+      url.includes('x.com') || url.includes('grok.com') ||
+      url.includes('perplexity.ai') ||
+      url.includes('deepseek.com') ||
+      url.includes('meta.ai')
     )
+  }
+
+  function handleDeepSeek(response: Response, body: unknown) {
+    let userText = ''
+    let modelName = 'DeepSeek V3'
+    try {
+      const parsed = typeof body === 'string' ? JSON.parse(body) : body
+      if (parsed?.model?.includes('reasoner') || parsed?.model?.includes('r1')) {
+        modelName = 'DeepSeek R1'
+      }
+      if (typeof parsed?.prompt === 'string') userText = parsed.prompt
+      else if (Array.isArray(parsed?.messages)) {
+        const last = parsed.messages[parsed.messages.length - 1]
+        if (typeof last?.content === 'string') userText = last.content
+      }
+    } catch {}
+
+    let assistantText = ''
+    readSSE(response.clone(), (raw) => {
+      try {
+        const d = JSON.parse(raw)
+        const delta = d?.choices?.[0]?.delta
+        if (delta?.reasoning_content) assistantText += delta.reasoning_content
+        if (delta?.content) assistantText += delta.content
+        if (!delta && typeof d?.choices?.[0]?.text === 'string') assistantText += d.choices[0].text
+        if (typeof d?.response === 'string') assistantText += d.response
+      } catch {}
+    }).then(() => {
+      log('[deepseek-fetch] done', { modelName, userTextLen: userText.length, assistantTextLen: assistantText.length })
+      if (userText || assistantText) dispatch('deepseek', { userText, assistantText, modelName, contextLimit: 128000 })
+    })
+  }
+
+  function handleMetaAI(response: Response, body: unknown) {
+    let userText = ''
+    try {
+      const parsed = typeof body === 'string' ? JSON.parse(body) : body
+      if (typeof parsed?.message === 'string') userText = parsed.message
+      else if (typeof parsed?.prompt === 'string') userText = parsed.prompt
+      else if (typeof parsed?.query === 'string') userText = parsed.query
+    } catch {}
+
+    response.clone().text().then((text) => {
+      // Clean HTML tags and extract readable response text for accurate token estimation
+      let cleanText = text
+      try {
+        const parsed = JSON.parse(text)
+        cleanText = typeof parsed?.data === 'string' ? parsed.data : JSON.stringify(parsed)
+      } catch {
+        cleanText = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      }
+      log('[meta-fetch] done', { userTextLen: userText.length, cleanTextLen: cleanText.length })
+      if (userText || cleanText) dispatch('meta', { userText, assistantText: cleanText.slice(0, 4000), modelName: 'Meta AI Llama 3.3', contextLimit: 128000 })
+    }).catch(() => {})
+  }
+
+  function handleClaudeUsageResponse(response: Response) {
+    response.clone().json().then((json) => {
+      log('[claude-usage-api]', json)
+      if (json?.five_hour?.utilization != null || json?.seven_day?.utilization != null) {
+        const sessionPct = json.five_hour?.utilization != null ? Math.round(json.five_hour.utilization * 100) : undefined
+        const weeklyPct = json.seven_day?.utilization != null ? Math.round(json.seven_day.utilization * 100) : undefined
+        const resetAtMs = json.five_hour?.resets_at ? new Date(json.five_hour.resets_at).getTime() : undefined
+        dispatch('claude', { isExactUsage: true, sessionPct, weeklyPct, resetAtMs })
+      }
+    }).catch(() => {})
   }
 
   function dispatch(provider: string, payload: Record<string, unknown>) {
@@ -79,24 +147,37 @@
   }
 
   // ════════════════════════════════════════════════════════════════
-  // ChatGPT — parse prompt + assistant response (supports standard & delta patches)
+  // ChatGPT — parse prompt + assistant response + auto model name
   // ════════════════════════════════════════════════════════════════
-  function extractChatGPTRequestText(body: unknown): string {
+  function extractChatGPTRequestText(body: unknown): { userText: string; modelName: string } {
+    let userText = ''
+    let modelName = 'GPT-4o'
     try {
       const parsed = typeof body === 'string' ? JSON.parse(body) : body
+      if (parsed?.model) {
+        if (parsed.model.includes('o3-mini')) modelName = 'o3-mini'
+        else if (parsed.model.includes('o1')) modelName = 'o1'
+        else if (parsed.model.includes('gpt-4o-mini')) modelName = 'GPT-4o mini'
+        else if (parsed.model.includes('gpt-4o')) modelName = 'GPT-4o'
+      }
       const messages = (parsed as any)?.messages
-      if (!Array.isArray(messages)) return ''
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const m = messages[i]
-        if (m?.author?.role === 'user') {
-          if (Array.isArray(m?.content?.parts)) {
-            return m.content.parts.filter((p: unknown) => typeof p === 'string').join(' ')
+      if (Array.isArray(messages)) {
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const m = messages[i]
+          if (m?.author?.role === 'user') {
+            if (Array.isArray(m?.content?.parts)) {
+              userText = m.content.parts.filter((p: unknown) => typeof p === 'string').join(' ')
+              break
+            }
+            if (typeof m?.content === 'string') {
+              userText = m.content
+              break
+            }
           }
-          if (typeof m?.content === 'string') return m.content
         }
       }
-      return ''
-    } catch { return '' }
+    } catch { }
+    return { userText, modelName }
   }
 
   function extractTextDeep(node: unknown, depth = 0): string {
@@ -114,7 +195,7 @@
   }
 
   function handleChatGPTFetch(response: Response, body: unknown) {
-    const userText = extractChatGPTRequestText(body)
+    const { userText, modelName } = extractChatGPTRequestText(body)
     const clone = response.clone()
     let assistantText = ''
     let lineCount = 0
@@ -124,13 +205,10 @@
       if (raw === '[DONE]') return
       try {
         const d = JSON.parse(raw)
-        // Standard message format
         if (d?.message?.author?.role === 'assistant') {
           const t = extractTextDeep(d.message?.content?.parts)
           if (t && t.length > assistantText.length) assistantText = t
-        }
-        // Delta patch format ("v" patch objects)
-        else if (d?.v) {
+        } else if (d?.v) {
           const t = extractTextDeep(d.v)
           if (t) {
             if (typeof d.v === 'string') assistantText += d.v
@@ -139,31 +217,37 @@
         }
       } catch { }
     }).then((sawData) => {
-      log('[chatgpt-fetch] done', { sawData, lineCount, userTextLen: userText.length, assistantTextLen: assistantText.length })
-      if (userText || assistantText) dispatch('chatgpt', { userText, assistantText })
+      log('[chatgpt-fetch] done', { sawData, modelName, lineCount, userTextLen: userText.length, assistantTextLen: assistantText.length })
+      if (userText || assistantText) dispatch('chatgpt', { userText, assistantText, modelName, contextLimit: 128000 })
     })
   }
 
   // ════════════════════════════════════════════════════════════════
   // Claude — parse prompt + numeric tokens or text streams
   // ════════════════════════════════════════════════════════════════
-  function extractClaudeRequestText(body: unknown): string {
+  function extractClaudeRequestText(body: unknown): { userText: string; modelName: string } {
+    let userText = ''
+    let modelName = 'Claude 3.5 Sonnet'
     try {
       const parsed = typeof body === 'string' ? JSON.parse(body) : body
-      if (typeof (parsed as any)?.prompt === 'string') return (parsed as any).prompt
-      if (typeof (parsed as any)?.text === 'string') return (parsed as any).text
-      if (Array.isArray((parsed as any)?.content)) {
-        return (parsed as any).content.filter((c: any) => typeof c?.text === 'string').map((c: any) => c.text).join(' ')
+      if (parsed?.model) {
+        if (parsed.model.includes('haiku')) modelName = 'Claude 3.5 Haiku'
+        else if (parsed.model.includes('opus')) modelName = 'Claude 3 Opus'
+        else if (parsed.model.includes('sonnet')) modelName = 'Claude 3.5 Sonnet'
       }
-      if (Array.isArray((parsed as any)?.messages)) {
+      if (typeof (parsed as any)?.prompt === 'string') userText = (parsed as any).prompt
+      else if (typeof (parsed as any)?.text === 'string') userText = (parsed as any).text
+      else if (Array.isArray((parsed as any)?.content)) {
+        userText = (parsed as any).content.filter((c: any) => typeof c?.text === 'string').map((c: any) => c.text).join(' ')
+      } else if (Array.isArray((parsed as any)?.messages)) {
         const last = (parsed as any).messages[(parsed as any).messages.length - 1]
-        if (typeof last?.content === 'string') return last.content
-        if (Array.isArray(last?.content)) {
-          return last.content.filter((c: any) => typeof c?.text === 'string').map((c: any) => c.text).join(' ')
+        if (typeof last?.content === 'string') userText = last.content
+        else if (Array.isArray(last?.content)) {
+          userText = last.content.filter((c: any) => typeof c?.text === 'string').map((c: any) => c.text).join(' ')
         }
       }
-      return ''
-    } catch { return '' }
+    } catch { }
+    return { userText, modelName }
   }
 
   type ClaudeState = { eventTypes: string[]; inputTokens: number; outputTokens: number; assistantText: string }
@@ -173,7 +257,6 @@
       const d = JSON.parse(raw)
       if (d.type) state.eventTypes.push(d.type)
       
-      // Token usage from Anthropic message events
       if (d.type === 'message_start' && d.message?.usage) {
         state.inputTokens = d.message.usage.input_tokens ?? 0
         state.outputTokens = d.message.usage.output_tokens ?? 0
@@ -183,7 +266,6 @@
         if (d.usage.input_tokens != null) state.inputTokens = d.usage.input_tokens
       }
       
-      // Text stream deltas
       if (d.type === 'content_block_delta' && d.delta?.text) {
         state.assistantText += d.delta.text
       } else if (typeof d?.delta?.text === 'string') {
@@ -191,13 +273,11 @@
       } else if (typeof d?.completion === 'string') {
         state.assistantText = d.completion
       }
-    } catch {
-      // non-JSON
-    }
+    } catch { }
   }
 
   function handleClaudeFetch(response: Response, body: unknown) {
-    const userText = extractClaudeRequestText(body)
+    const { userText, modelName } = extractClaudeRequestText(body)
     const clone = response.clone()
     const state: ClaudeState = { eventTypes: [], inputTokens: 0, outputTokens: 0, assistantText: '' }
 
@@ -205,15 +285,15 @@
       processClaudeLine(raw, state)
     }).then((sawData) => {
       log('[claude-fetch] done', {
-        sawData,
+        sawData, modelName,
         numeric: { in: state.inputTokens, out: state.outputTokens },
         userTextLen: userText.length, assistantTextLen: state.assistantText.length,
       })
 
       if (state.inputTokens || state.outputTokens) {
-        dispatch('claude', { inputTokens: state.inputTokens, outputTokens: state.outputTokens, totalTokens: state.inputTokens + state.outputTokens })
+        dispatch('claude', { inputTokens: state.inputTokens, outputTokens: state.outputTokens, totalTokens: state.inputTokens + state.outputTokens, modelName, contextLimit: 200000 })
       } else if (userText || state.assistantText) {
-        dispatch('claude', { userText, assistantText: state.assistantText })
+        dispatch('claude', { userText, assistantText: state.assistantText, modelName, contextLimit: 200000 })
       }
     })
   }
@@ -236,13 +316,18 @@
         } catch { }
       }
       if (lastUsage) {
-        dispatch('gemini', { inputTokens: lastUsage.inp, outputTokens: lastUsage.out, totalTokens: lastUsage.inp + lastUsage.out })
+        dispatch('gemini', { inputTokens: lastUsage.inp, outputTokens: lastUsage.out, totalTokens: lastUsage.inp + lastUsage.out, modelName: 'Gemini 2.0 Flash', contextLimit: 1000000 })
+      } else if (text.length > 50) {
+        // Fallback: estimate from extracted response text payload
+        const cleanText = text.replace(/\\n/g, '\n').replace(/\\"/g, '"').slice(0, 10000)
+        dispatch('gemini', { userText: '', assistantText: cleanText, modelName: 'Gemini 2.0 Flash', contextLimit: 1000000 })
       }
     }).catch((e) => log('[gemini] error', e))
   }
 
   function handleGrok(response: Response) {
     let lastInput = 0, lastOutput = 0
+    let assistantText = ''
     readSSE(response.clone(), (raw) => {
       try {
         const d = JSON.parse(raw)
@@ -251,15 +336,23 @@
           lastInput = usage.input_tokens ?? usage.prompt_tokens ?? lastInput
           lastOutput = usage.output_tokens ?? usage.completion_tokens ?? lastOutput
         }
+        if (typeof d?.result?.response?.token === 'string') assistantText += d.result.response.token
+        else if (typeof d?.result?.message === 'string') assistantText += d.result.message
+        else if (typeof d?.token === 'string') assistantText += d.token
       } catch { }
     }).then((sawData) => {
-      log('[grok] sawSSE=', sawData, 'tokens=', { lastInput, lastOutput })
-      if (lastInput || lastOutput) dispatch('grok', { inputTokens: lastInput, outputTokens: lastOutput, totalTokens: lastInput + lastOutput })
+      log('[grok] sawSSE=', sawData, 'tokens=', { lastInput, lastOutput }, 'assistantLen=', assistantText.length)
+      if (lastInput || lastOutput) {
+        dispatch('grok', { inputTokens: lastInput, outputTokens: lastOutput, totalTokens: lastInput + lastOutput, modelName: 'Grok 2', contextLimit: 128000 })
+      } else if (assistantText) {
+        dispatch('grok', { userText: '', assistantText, modelName: 'Grok 2', contextLimit: 128000 })
+      }
     })
   }
 
   function handlePerplexity(response: Response) {
     let lastInput = 0, lastOutput = 0
+    let assistantText = ''
     readSSE(response.clone(), (raw) => {
       try {
         const d = JSON.parse(raw)
@@ -268,10 +361,16 @@
           lastInput = usage.prompt_tokens ?? lastInput
           lastOutput = usage.completion_tokens ?? lastOutput
         }
+        const chunk = d.choices?.[0]?.delta?.content ?? d.text ?? d.output
+        if (typeof chunk === 'string') assistantText += chunk
       } catch { }
     }).then((sawData) => {
-      log('[perplexity] sawSSE=', sawData, 'tokens=', { lastInput, lastOutput })
-      if (lastInput || lastOutput) dispatch('perplexity', { inputTokens: lastInput, outputTokens: lastOutput, totalTokens: lastInput + lastOutput })
+      log('[perplexity] sawSSE=', sawData, 'tokens=', { lastInput, lastOutput }, 'assistantLen=', assistantText.length)
+      if (lastInput || lastOutput) {
+        dispatch('perplexity', { inputTokens: lastInput, outputTokens: lastOutput, totalTokens: lastInput + lastOutput, modelName: 'Sonar Pro', contextLimit: 128000 })
+      } else if (assistantText) {
+        dispatch('perplexity', { userText: '', assistantText, modelName: 'Sonar Pro', contextLimit: 128000 })
+      }
     })
   }
 
@@ -304,7 +403,9 @@
     if (isProviderUrl(url)) log('fetch', method, url)
 
     try {
-      if (url.includes('claude.ai') && (path.includes('/completion') || path.includes('/chat_conversations')) && method === 'POST') {
+      if (url.includes('claude.ai') && path.includes('/usage')) {
+        handleClaudeUsageResponse(response)
+      } else if (url.includes('claude.ai') && (path.includes('/completion') || path.includes('/chat_conversations')) && method === 'POST') {
         handleClaudeFetch(response, body)
       } else if ((url.includes('chatgpt.com') || url.includes('chat.openai.com')) && path.includes('/conversation') && method === 'POST') {
         handleChatGPTFetch(response, body)
@@ -315,6 +416,10 @@
         handleGrok(response)
       } else if (url.includes('perplexity.ai') && (url.includes('query') || url.includes('search') || url.includes('ask'))) {
         handlePerplexity(response)
+      } else if (url.includes('deepseek.com') && (path.includes('/chat') || path.includes('/completion'))) {
+        handleDeepSeek(response, body)
+      } else if (url.includes('meta.ai')) {
+        handleMetaAI(response, body)
       }
     } catch (e) { log('fetch handler error', e) }
 
@@ -339,7 +444,7 @@
 
     try {
       if (url.includes('claude.ai') && (path.includes('/completion') || path.includes('/chat_conversations')) && method === 'POST') {
-        const userText = extractClaudeRequestText(body)
+        const { userText, modelName } = extractClaudeRequestText(body)
         const state: ClaudeState = { eventTypes: [], inputTokens: 0, outputTokens: 0, assistantText: '' }
         let lastLen = 0, buffer = ''
         this.addEventListener('readystatechange', () => {
@@ -350,14 +455,14 @@
           if (this.readyState === 4) {
             log('[claude-xhr] done', { eventTypes: state.eventTypes, numeric: { in: state.inputTokens, out: state.outputTokens }, userTextLen: userText.length, assistantTextLen: state.assistantText.length })
             if (state.inputTokens || state.outputTokens) {
-              dispatch('claude', { inputTokens: state.inputTokens, outputTokens: state.outputTokens, totalTokens: state.inputTokens + state.outputTokens })
+              dispatch('claude', { inputTokens: state.inputTokens, outputTokens: state.outputTokens, totalTokens: state.inputTokens + state.outputTokens, modelName, contextLimit: 200000 })
             } else if (userText || state.assistantText) {
-              dispatch('claude', { userText, assistantText: state.assistantText })
+              dispatch('claude', { userText, assistantText: state.assistantText, modelName, contextLimit: 200000 })
             }
           }
         })
       } else if ((url.includes('chatgpt.com') || url.includes('chat.openai.com')) && path.includes('/conversation') && method === 'POST') {
-        const userText = extractChatGPTRequestText(body)
+        const { userText, modelName } = extractChatGPTRequestText(body)
         let assistantText = ''
         let lastLen = 0, buffer = ''
         this.addEventListener('readystatechange', () => {
@@ -382,7 +487,7 @@
           })
           if (this.readyState === 4) {
             log('[chatgpt-xhr] done', { userTextLen: userText.length, assistantTextLen: assistantText.length })
-            if (userText || assistantText) dispatch('chatgpt', { userText, assistantText })
+            if (userText || assistantText) dispatch('chatgpt', { userText, assistantText, modelName, contextLimit: 128000 })
           }
         })
       }
