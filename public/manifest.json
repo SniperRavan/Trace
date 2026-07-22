@@ -32,8 +32,14 @@
         "https://claude.ai/*",
         "https://gemini.google.com/*",
         "https://x.com/*",
+        "https://grok.com/*",
+        "https://www.grok.com/*",
         "https://perplexity.ai/*",
-        "https://www.perplexity.ai/*"
+        "https://www.perplexity.ai/*",
+        "https://deepseek.com/*",
+        "https://chat.deepseek.com/*",
+        "https://meta.ai/*",
+        "https://www.meta.ai/*"
       ],
       "js": ["content/interceptor.js"],
       "run_at": "document_start",
@@ -47,8 +53,14 @@
         "https://claude.ai/*",
         "https://gemini.google.com/*",
         "https://x.com/*",
+        "https://grok.com/*",
+        "https://www.grok.com/*",
         "https://perplexity.ai/*",
-        "https://www.perplexity.ai/*"
+        "https://www.perplexity.ai/*",
+        "https://deepseek.com/*",
+        "https://chat.deepseek.com/*",
+        "https://meta.ai/*",
+        "https://www.meta.ai/*"
       ],
       "js": ["content/index.js"],
       "run_at": "document_idle",
@@ -64,8 +76,14 @@
     "https://claude.ai/*",
     "https://gemini.google.com/*",
     "https://x.com/*",
+    "https://grok.com/*",
+    "https://www.grok.com/*",
     "https://perplexity.ai/*",
     "https://www.perplexity.ai/*",
+    "https://deepseek.com/*",
+    "https://chat.deepseek.com/*",
+    "https://meta.ai/*",
+    "https://www.meta.ai/*",
     "https://www.google.com/s2/favicons*"
   ],
 
