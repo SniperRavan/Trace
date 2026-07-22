@@ -7,12 +7,13 @@ import {
   useTraceStore,
   PROVIDER_IDENTITY,
   getSessionPercent,
+  getWeeklyPercent,
   type ProviderId,
 } from '@/storage/store'
 import { formatTokens, formatResetTime } from '@/tracking/estimator'
 import { ProviderLogo } from '@/components/ui/ProviderLogo'
 
-const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity']
+const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity', 'deepseek', 'meta']
 
 function useCountdown(resetAt: number): string {
   const [text, setText] = useState(() => formatResetTime(resetAt))
@@ -25,9 +26,8 @@ function useCountdown(resetAt: number): string {
   return text
 }
 
-
-
 function PanelHeader() {
+  const currentTier = useTraceStore(s => s.currentTier)
   const total = useTraceStore(s =>
     PANEL_PROVIDERS.reduce((sum, id) => sum + s.providers[id].totalTokens, 0)
   )
@@ -37,9 +37,14 @@ function PanelHeader() {
       padding: '11px 14px 9px',
       borderBottom: '0.5px solid rgba(255,255,255,0.05)',
     }}>
-      <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.7px', textTransform: 'uppercase' }}>
-        Trace
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.7px', textTransform: 'uppercase' }}>
+          Trace
+        </span>
+        <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>
+          {currentTier}
+        </span>
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', animation: 'trace-breathe 2s ease-in-out infinite' }} />
         <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>{formatTokens(total)} today</span>
@@ -51,32 +56,55 @@ function PanelHeader() {
 function ProviderRow({ id }: { id: ProviderId }) {
   const state = useTraceStore(s => s.providers[id])
   const { name, color } = PROVIDER_IDENTITY[id]
-  const rawPct = getSessionPercent(state)
-  const used = state.sessionUsage.used
-  const pct = rawPct
-  const showSliver = used > 0 && rawPct === 0
-  const barPct = showSliver ? 0.6 : rawPct
-  const label = showSliver ? '<1%' : `${rawPct}%`
-  const barColor = pct >= 80 ? 'rgba(248,113,113,0.9)' : color
-  const pctColor = pct >= 80 ? '#f87171' : 'rgba(255,255,255,0.55)'
+  const sessionPct = getSessionPercent(state)
+  const weeklyPct = getWeeklyPercent(state)
+
+  const sessionBarColor = sessionPct >= 80 ? 'rgba(248,113,113,0.9)' : color
+  const weeklyBarColor = weeklyPct >= 80 ? 'rgba(239,68,68,0.9)' : 'rgba(99,102,241,0.85)'
   const countdown = useCountdown(state.sessionUsage.resetAt)
+  const weeklyCountdown = useCountdown(state.weeklyUsage.resetAt)
 
   return (
     <div
-      style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', transition: 'background 0.15s', cursor: 'default' }}
+      style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '7px 14px', transition: 'background 0.15s', cursor: 'default' }}
       onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.025)')}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
     >
-      <ProviderLogo provider={id} size={26} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, color: 'rgba(255,255,255,0.72)', marginBottom: 4 }}>{name}</div>
-        <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${barPct}%`, borderRadius: 3, background: barColor, boxShadow: `0 0 6px ${barColor}55`, transition: 'width 0.6s cubic-bezier(0.4,0,0.2,1)' }} />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ProviderLogo provider={id} size={22} />
+          <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--trace-text-primary, rgba(255,255,255,0.85))' }}>{name}</span>
+          <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
+            {state.activeModel}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, color: 'rgba(255,255,255,0.3)', fontVariantNumeric: 'tabular-nums' }}>
+          <span>S: <strong style={{ color: sessionPct >= 80 ? '#f87171' : '#ffffff' }}>{sessionPct}%</strong></span>
+          <span>·</span>
+          <span>W: <strong style={{ color: weeklyPct >= 80 ? '#f87171' : 'rgba(129,140,248,0.9)' }}>{weeklyPct}%</strong></span>
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
-        <span style={{ fontSize: 12, fontWeight: 500, color: pctColor, fontVariantNumeric: 'tabular-nums' }}>{label}</span>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', fontVariantNumeric: 'tabular-nums' }}>{countdown}</span>
+
+      {/* Dual Progress Bars: Session & Weekly */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 2 }}>
+        <div>
+          <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${Math.max(sessionPct, 1)}%`, borderRadius: 3, background: sessionBarColor, transition: 'width 0.6s' }} />
+          </div>
+          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.2)', marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
+            <span>Session</span>
+            <span>{countdown}</span>
+          </div>
+        </div>
+        <div>
+          <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${Math.max(weeklyPct, 1)}%`, borderRadius: 3, background: weeklyBarColor, transition: 'width 0.6s' }} />
+          </div>
+          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.2)', marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
+            <span>Weekly</span>
+            <span>{weeklyCountdown}</span>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -87,7 +115,7 @@ export function CompactPanel() {
   return (
     <div style={{
       width: 264,
-      background: 'rgba(14,16,22,0.97)',
+      background: 'var(--trace-bg-base, #0d0f14)',
       border: '0.5px solid rgba(255,255,255,0.09)',
       borderRadius: 16,
       backdropFilter: 'blur(32px)',
