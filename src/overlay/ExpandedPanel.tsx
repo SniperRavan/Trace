@@ -12,11 +12,12 @@ import {
   getProviderHealth,
   type ProviderId,
   type ThemeName,
+  type SubscriptionTier,
 } from '@/storage/store'
 import { formatTokens, formatResetTime } from '@/tracking/estimator'
 import { ProviderLogo } from '@/components/ui/ProviderLogo'
 
-const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity']
+const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity', 'deepseek', 'meta']
 const THEMES: { id: ThemeName; name: string }[] = [
   { id: 'catppuccin', name: 'Catppuccin' },
   { id: 'nord', name: 'Nord' },
@@ -24,6 +25,12 @@ const THEMES: { id: ThemeName; name: string }[] = [
   { id: 'gruvbox', name: 'Gruvbox' },
   { id: 'dracula', name: 'Dracula' },
   { id: 'everforest', name: 'Everforest' },
+]
+const TIERS: { id: SubscriptionTier; name: string }[] = [
+  { id: 'free', name: 'Free Plan' },
+  { id: 'pro', name: 'Pro / Plus' },
+  { id: 'team', name: 'Team Plan' },
+  { id: 'enterprise', name: 'Enterprise' },
 ]
 
 function useCountdown(resetAt: number): string {
@@ -35,6 +42,26 @@ function useCountdown(resetAt: number): string {
     return () => clearInterval(iv)
   }, [resetAt])
   return text
+}
+
+function CacheCountdown({ expiresAt }: { expiresAt: number }) {
+  const [rem, setRem] = useState('')
+  useEffect(() => {
+    const update = () => {
+      const diff = expiresAt - Date.now()
+      if (diff <= 0) {
+        setRem('Expired')
+      } else {
+        const m = Math.floor(diff / 60000)
+        const s = Math.floor((diff % 60000) / 1000)
+        setRem(`${m}m ${s < 10 ? '0' : ''}${s}s`)
+      }
+    }
+    update()
+    const iv = setInterval(update, 1000)
+    return () => clearInterval(iv)
+  }, [expiresAt])
+  return <span>{rem}</span>
 }
 
 function SparklineChart({ history, color, width = 310, height = 110 }: {
@@ -112,7 +139,7 @@ export function ExpandedPanel() {
   return (
     <div style={{
       width: 560,
-      background: 'rgba(14,16,22,0.97)',
+      background: 'var(--trace-bg-base, #0d0f14)',
       border: '0.5px solid rgba(255,255,255,0.09)',
       borderRadius: 16,
       backdropFilter: 'blur(32px)',
@@ -199,32 +226,62 @@ export function ExpandedPanel() {
           })}
         </div>
 
-        {/* Theme Picker footer */}
+        {/* Settings Footer: Theme & Plan Tier (Per Provider) */}
         <div style={{
           padding: '10px 14px',
           borderTop: '0.5px solid rgba(255,255,255,0.05)',
           background: 'rgba(0,0,0,0.1)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
         }}>
-          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Theme</div>
-          <select
-            value={currentTheme}
-            onChange={e => setTheme(e.target.value as any)}
-            style={{
-              width: '100%',
-              background: 'rgba(255,255,255,0.04)',
-              border: '0.5px solid rgba(255,255,255,0.1)',
-              borderRadius: 6,
-              color: 'rgba(255,255,255,0.7)',
-              fontSize: 11,
-              padding: '4px 6px',
-              outline: 'none',
-              cursor: 'pointer',
-            }}
-          >
-            {THEMES.map(t => (
-              <option key={t.id} value={t.id} style={{ background: '#0d0f14', color: '#fff' }}>{t.name}</option>
-            ))}
-          </select>
+          <div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+              {meta.name} Plan Tier
+            </div>
+            <select
+              value={activeState.tier || 'pro'}
+              onChange={e => useTraceStore.getState().setProviderTier(selectedId, e.target.value as SubscriptionTier)}
+              style={{
+                width: '100%',
+                background: 'rgba(255,255,255,0.04)',
+                border: '0.5px solid rgba(255,255,255,0.1)',
+                borderRadius: 6,
+                color: 'rgba(255,255,255,0.85)',
+                fontSize: 11,
+                padding: '4px 6px',
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              {TIERS.map(t => (
+                <option key={t.id} value={t.id} style={{ background: '#0d0f14', color: '#fff' }}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Theme</div>
+            <select
+              value={currentTheme}
+              onChange={e => setTheme(e.target.value as any)}
+              style={{
+                width: '100%',
+                background: 'rgba(255,255,255,0.04)',
+                border: '0.5px solid rgba(255,255,255,0.1)',
+                borderRadius: 6,
+                color: 'rgba(255,255,255,0.85)',
+                fontSize: 11,
+                padding: '4px 6px',
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              {THEMES.map(t => (
+                <option key={t.id} value={t.id} style={{ background: '#0d0f14', color: '#fff' }}>{t.name}</option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -244,9 +301,14 @@ export function ExpandedPanel() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <ProviderLogo provider={selectedId} size={22} />
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
-              {meta.name} Detailed Usage
-            </span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
+                {meta.name} Detailed Usage
+              </div>
+              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>
+                Model: <span style={{ color: meta.color }}>{activeState.activeModel}</span> · Tier: <span style={{ textTransform: 'uppercase' }}>{activeState.tier}</span>
+              </div>
+            </div>
           </div>
           <span
             onClick={() => setExpandedView(false)}
@@ -287,9 +349,13 @@ export function ExpandedPanel() {
             <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.15)', marginTop: 2 }}>{formatTokens(remainingSession)} remaining</div>
           </div>
           <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 10, border: '0.5px solid rgba(255,255,255,0.04)' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginBottom: 4 }}>Message Count</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#ffffff' }}>{activeState.messageCount}</div>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.15)', marginTop: 2 }}>reset: {countdown}</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginBottom: 4 }}>Context & Cache</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
+              {formatTokens(activeState.contextTokens)} / {formatTokens(activeState.contextLimit)}
+            </div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 2 }}>
+              Cache: {activeState.cacheExpiresAt > Date.now() ? <CacheCountdown expiresAt={activeState.cacheExpiresAt} /> : 'Inactive'}
+            </div>
           </div>
         </div>
 
