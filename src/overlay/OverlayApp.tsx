@@ -26,6 +26,7 @@ function TraceBubble() {
   const overlayOpen = useTraceStore(s => s.overlayOpen)
   const expandedView = useTraceStore(s => s.expandedView)
   const toggleOverlay = useTraceStore(s => s.toggleOverlay)
+  const currentTheme = useTraceStore(s => s.currentTheme)
 
   const [pos, setPos] = useState({ x: window.innerWidth - 80, y: 16 })
   const [hidden, setHidden] = useState(false)
@@ -93,7 +94,7 @@ function TraceBubble() {
   if (hidden) return null
 
   return (
-    <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 2147483647 }}>
+    <div data-theme={currentTheme} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 2147483647 }}>
       <div
         onMouseDown={onMouseDown} onClick={onClick} onContextMenu={onContextMenu}
         style={{
