@@ -49,4 +49,21 @@ describe('Trace Store', () => {
     expect(reset.used).toBe(0)
     expect(reset.resetAt).toBeGreaterThan(Date.now())
   })
+
+  it('should set per-provider tier without mutating other providers', () => {
+    const store = useTraceStore.getState()
+    store.setProviderTier('claude', 'team')
+
+    expect(useTraceStore.getState().providers.claude.tier).toBe('team')
+    expect(useTraceStore.getState().providers.chatgpt.tier).toBe('pro')
+  })
+
+  it('should update active model name and context limit', () => {
+    const store = useTraceStore.getState()
+    store.setActiveModel('deepseek', 'DeepSeek R1', 128000)
+
+    const deepseekState = useTraceStore.getState().providers.deepseek
+    expect(deepseekState.activeModel).toBe('DeepSeek R1')
+    expect(deepseekState.contextLimit).toBe(128000)
+  })
 })
