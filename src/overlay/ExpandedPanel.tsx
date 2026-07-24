@@ -17,7 +17,7 @@ import {
 import { formatTokens, formatResetTime } from '@/tracking/estimator'
 import { ProviderLogo } from '@/components/ui/ProviderLogo'
 
-const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity', 'deepseek', 'meta']
+const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini']
 const THEMES: { id: ThemeName; name: string }[] = [
   { id: 'catppuccin', name: 'Catppuccin' },
   { id: 'nord', name: 'Nord' },
@@ -25,6 +25,7 @@ const THEMES: { id: ThemeName; name: string }[] = [
   { id: 'gruvbox', name: 'Gruvbox' },
   { id: 'dracula', name: 'Dracula' },
   { id: 'everforest', name: 'Everforest' },
+  { id: 'liquidglass', name: 'Liquid Glass 🌊' },
 ]
 const TIERS: { id: SubscriptionTier; name: string }[] = [
   { id: 'free', name: 'Free Plan' },
@@ -139,11 +140,12 @@ export function ExpandedPanel() {
   return (
     <div style={{
       width: 560,
-      background: 'var(--trace-bg-base, #0d0f14)',
-      border: '0.5px solid rgba(255,255,255,0.09)',
-      borderRadius: 16,
-      backdropFilter: 'blur(32px)',
-      boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.04)',
+      background: 'var(--trace-bg-gradient, #0d0f14)',
+      border: '0.5px solid var(--trace-border-muted, rgba(255,255,255,0.12))',
+      borderRadius: 'var(--trace-panel-radius, 16px)',
+      backdropFilter: 'var(--trace-panel-blur, blur(20px))',
+      WebkitBackdropFilter: 'var(--trace-panel-blur, blur(20px))',
+      boxShadow: 'var(--trace-panel-shadow, 0 8px 32px rgba(0,0,0,0.5))',
       overflow: 'hidden',
       fontFamily: 'Inter, system-ui, sans-serif',
       display: 'flex',
