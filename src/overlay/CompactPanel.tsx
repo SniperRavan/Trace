@@ -13,7 +13,7 @@ import {
 import { formatTokens, formatResetTime } from '@/tracking/estimator'
 import { ProviderLogo } from '@/components/ui/ProviderLogo'
 
-const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity', 'deepseek', 'meta']
+const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini']
 
 function useCountdown(resetAt: number): string {
   const [text, setText] = useState(() => formatResetTime(resetAt))
@@ -114,12 +114,13 @@ export function CompactPanel() {
   const setExpandedView = useTraceStore(s => s.setExpandedView)
   return (
     <div style={{
-      width: 264,
-      background: 'var(--trace-bg-base, #0d0f14)',
-      border: '0.5px solid rgba(255,255,255,0.09)',
-      borderRadius: 16,
-      backdropFilter: 'blur(32px)',
-      boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.04)',
+      width: 270,
+      background: 'var(--trace-bg-gradient, #0d0f14)',
+      border: '0.5px solid var(--trace-border-muted, rgba(255,255,255,0.12))',
+      borderRadius: 'var(--trace-panel-radius, 16px)',
+      backdropFilter: 'var(--trace-panel-blur, blur(20px))',
+      WebkitBackdropFilter: 'var(--trace-panel-blur, blur(20px))',
+      boxShadow: 'var(--trace-panel-shadow, 0 8px 32px rgba(0,0,0,0.5))',
       overflow: 'hidden',
       fontFamily: 'Inter, system-ui, sans-serif',
       animation: 'trace-slide-up 0.18s ease-out',
@@ -129,14 +130,25 @@ export function CompactPanel() {
         {PANEL_PROVIDERS.map(id => <ProviderRow key={id} id={id} />)}
       </div>
       <div style={{
-        padding: '7px 14px 9px',
-        borderTop: '0.5px solid rgba(255,255,255,0.05)',
+        padding: '8px 14px 10px',
+        borderTop: '0.5px solid rgba(255,255,255,0.12)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.15)' }}>all providers · local estimate · no cloud</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>local-only · privacy first</span>
         <span
           onClick={() => setExpandedView(true)}
-          style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: 'rgba(99,102,241,0.1)', color: 'rgba(129,140,248,0.7)', border: '0.5px solid rgba(99,102,241,0.18)', cursor: 'pointer' }}
+          style={{
+            fontSize: 10,
+            padding: '3px 9px',
+            borderRadius: 9999,
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.20) 0%, rgba(255,255,255,0.05) 100%)',
+            color: '#ffffff',
+            border: '0.5px solid rgba(255,255,255,0.35)',
+            boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.45)',
+            cursor: 'pointer',
+            fontWeight: 500,
+            transition: 'all 0.15s',
+          }}
         >
           ↗ expand
         </span>
