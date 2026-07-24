@@ -96,9 +96,10 @@ tmp/
 uploads/
 
 ############################
-# 🔹 Summary of Fixes
+# 🔹 Markdown Files (Ignore all except README.md)
 ############################
-SUMMARY_OF_FIXES.md
+*.md
+!README.md
 
 ############################
 # 🔹 References
