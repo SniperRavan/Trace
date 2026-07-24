@@ -19,27 +19,19 @@ export const PROVIDER_IDENTITY: Record<ProviderId, { letter: string; color: stri
   chatgpt: { letter: 'G', color: '#10b981', name: 'ChatGPT' },
   claude: { letter: 'C', color: '#f59e0b', name: 'Claude' },
   gemini: { letter: 'M', color: '#818cf8', name: 'Gemini' },
-  grok: { letter: 'X', color: '#9ca3af', name: 'Grok' },
-  perplexity: { letter: 'P', color: '#06b6d4', name: 'Perplexity' },
-  deepseek: { letter: 'D', color: '#3b82f6', name: 'DeepSeek' },
-  meta: { letter: 'F', color: '#1877f2', name: 'Meta AI' },
 }
 
-export type ProviderId = 'chatgpt' | 'claude' | 'gemini' | 'grok' | 'perplexity' | 'deepseek' | 'meta'
+export type ProviderId = 'chatgpt' | 'claude' | 'gemini'
 export type HealthState = 'healthy' | 'near_limit' | 'over_limit'
-export type ThemeName = 'catppuccin' | 'nord' | 'tokyonight' | 'gruvbox' | 'dracula' | 'everforest'
+export type ThemeName = 'catppuccin' | 'nord' | 'tokyonight' | 'gruvbox' | 'dracula' | 'everforest' | 'liquidglass'
 export type SubscriptionTier = 'free' | 'pro' | 'team' | 'enterprise'
 
-export const ALL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini', 'grok', 'perplexity', 'deepseek', 'meta']
+export const ALL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini']
 
 export const CONTEXT_WINDOW_LIMITS: Record<ProviderId, number> = {
   chatgpt: 128_000,
   claude: 200_000,
   gemini: 1_000_000,
-  grok: 128_000,
-  perplexity: 128_000,
-  deepseek: 128_000,
-  meta: 128_000,
 }
 
 export const TIER_MULTIPLIERS: Record<SubscriptionTier, number> = {
@@ -53,30 +45,18 @@ const SESSION_LIMIT: Record<ProviderId, number> = {
   chatgpt: 40_000,
   claude: 45_000,
   gemini: 60_000,
-  grok: 25_000,
-  perplexity: 20_000,
-  deepseek: 35_000,
-  meta: 30_000,
 }
 
 const WEEKLY_LIMIT: Record<ProviderId, number> = {
   chatgpt: 200_000,
   claude: 300_000,
   gemini: 500_000,
-  grok: 100_000,
-  perplexity: 100_000,
-  deepseek: 150_000,
-  meta: 150_000,
 }
 
 const SESSION_RESET_MS: Record<ProviderId, number> = {
-  chatgpt: 3 * 60 * 60 * 1_000,
-  claude: 8 * 60 * 60 * 1_000,
-  gemini: 24 * 60 * 60 * 1_000,
-  grok: 24 * 60 * 60 * 1_000,
-  perplexity: 24 * 60 * 60 * 1_000,
-  deepseek: 24 * 60 * 60 * 1_000,
-  meta: 24 * 60 * 60 * 1_000,
+  chatgpt: 3 * 60 * 60 * 1_000, // 3h rolling reset
+  claude: 5 * 60 * 60 * 1_000,  // 5h rolling reset
+  gemini: 5 * 60 * 60 * 1_000,  // 5h rolling reset per Google Gemini spec
 }
 
 export interface UsagePeriod {
@@ -190,10 +170,6 @@ const DEFAULT_MODEL_NAMES: Record<ProviderId, string> = {
   chatgpt: 'GPT-4o',
   claude: 'Claude 3.5 Sonnet',
   gemini: 'Gemini 2.0 Flash',
-  grok: 'Grok 2',
-  perplexity: 'Sonar Pro',
-  deepseek: 'DeepSeek V3',
-  meta: 'Meta AI Muse',
 }
 
 function defaultProvider(id: ProviderId, tier: SubscriptionTier = 'pro'): ProviderState {
@@ -227,7 +203,7 @@ function scheduleWrite(getState: () => TraceStore) {
       if (err instanceof Error && err.message.includes('context invalidated')) return
       console.warn('[Trace Store] write failed:', err)
     }
-  }, 1_500)
+  }, 150)
 }
 
 export const useTraceStore = create<TraceStore>((set, get) => ({
@@ -237,7 +213,7 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
   expandedView: false,
   expandedProvider: null,
   currentTheme: 'catppuccin',
-  currentTier: 'pro',
+  currentTier: 'free',
   lastAnalyticsAt: 0,
 
   init: async () => {
@@ -245,10 +221,16 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
     if (!isContextValid()) return
     try {
       chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName === 'local' && changes.trace_state) {
-          const nextState = changes.trace_state.newValue as Record<ProviderId, ProviderState>
-          if (nextState) {
-            set({ providers: nextState })
+        if (areaName === 'local') {
+          const updates: Partial<TraceStore> = {}
+          if (changes.trace_state?.newValue) {
+            updates.providers = changes.trace_state.newValue as Record<ProviderId, ProviderState>
+          }
+          if (changes.trace_theme?.newValue) {
+            updates.currentTheme = changes.trace_theme.newValue as ThemeName
+          }
+          if (Object.keys(updates).length > 0) {
+            set(updates)
           }
         }
       })
