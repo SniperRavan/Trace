@@ -9,6 +9,7 @@ import {
   type ThemeName,
 } from '@/storage/store'
 import { ProviderLogo } from '@/components/ui/ProviderLogo'
+import '@/overlay/overlay.css'
 
 const TIERS: { id: SubscriptionTier; name: string }[] = [
   { id: 'free', name: 'Free Plan (0.5x)' },
@@ -24,6 +25,7 @@ const THEMES: { id: ThemeName; name: string }[] = [
   { id: 'gruvbox', name: 'Gruvbox' },
   { id: 'dracula', name: 'Dracula' },
   { id: 'everforest', name: 'Everforest' },
+  { id: 'liquidglass', name: 'Liquid Glass 🌊' },
 ]
 
 function PopupApp() {
@@ -36,74 +38,82 @@ function PopupApp() {
 
   if (!loaded) {
     return (
-      <div style={{ padding: 20, color: 'rgba(255,255,255,0.4)', fontSize: 12, textAlign: 'center', background: '#0d0f14', width: 280 }}>
+      <div style={{ padding: 20, color: 'rgba(255,255,255,0.4)', fontSize: 12, textAlign: 'center', background: '#0d0f14', width: 330 }}>
         Loading Trace...
       </div>
     )
   }
 
   return (
-    <div style={{
-      width: 300,
+    <div data-theme={store.currentTheme} style={{
+      width: 330,
       padding: '16px',
-      background: '#0d0f14',
-      color: '#ffffff',
+      background: 'var(--trace-bg-gradient, #0d0f14)',
+      color: 'var(--trace-text-primary, #ffffff)',
       fontFamily: "'Inter', system-ui, sans-serif",
+      boxSizing: 'border-box',
+      border: '0.5px solid var(--trace-border-muted, rgba(255,255,255,0.12))',
+      borderRadius: 'var(--trace-panel-radius, 16px)',
+      backdropFilter: 'var(--trace-panel-blur, blur(20px))',
+      WebkitBackdropFilter: 'var(--trace-panel-blur, blur(20px))',
+      boxShadow: 'var(--trace-panel-shadow, 0 8px 32px rgba(0,0,0,0.5))',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.3px', color: '#ffffff' }}>Trace</div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>Ambient AI usage tracker</div>
+          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>Ambient AI usage tracker</div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(16,185,129,0.1)', padding: '3px 8px', borderRadius: 12, border: '0.5px solid rgba(16,185,129,0.2)' }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} />
-          <span style={{ fontSize: 9, color: '#10b981', fontWeight: 500 }}>Active</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(16,185,129,0.15)', padding: '4px 10px', borderRadius: 9999, border: '0.5px solid rgba(16,185,129,0.3)', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.2)' }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981' }} />
+          <span style={{ fontSize: 9, color: '#34d399', fontWeight: 600 }}>Active</span>
         </div>
       </div>
 
       {/* Plan Tier Selector */}
-      <div style={{ background: 'rgba(255,255,255,0.03)', padding: '10px 12px', borderRadius: 10, border: '0.5px solid rgba(255,255,255,0.06)', marginBottom: 12 }}>
-        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Subscription Plan</div>
+      <div style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 100%)', padding: '10px 12px', borderRadius: 16, border: '0.5px solid rgba(255,255,255,0.20)', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.3)', marginBottom: 12 }}>
+        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6, fontWeight: 600 }}>Subscription Plan</div>
         <select
           value={store.currentTier}
           onChange={e => store.setTier(e.target.value as SubscriptionTier)}
           style={{
             width: '100%',
-            background: 'rgba(255,255,255,0.05)',
-            border: '0.5px solid rgba(255,255,255,0.1)',
-            borderRadius: 6,
+            background: 'rgba(255,255,255,0.08)',
+            border: '0.5px solid rgba(255,255,255,0.25)',
+            borderRadius: 10,
             color: '#ffffff',
             fontSize: 11,
-            padding: '5px 8px',
+            padding: '6px 10px',
             outline: 'none',
             cursor: 'pointer',
+            boxSizing: 'border-box',
+            backdropFilter: 'blur(10px)',
           }}
         >
           {TIERS.map(t => (
-            <option key={t.id} value={t.id} style={{ background: '#0d0f14', color: '#ffffff' }}>{t.name}</option>
+            <option key={t.id} value={t.id} style={{ background: '#0f172a', color: '#ffffff' }}>{t.name}</option>
           ))}
         </select>
       </div>
 
       {/* Provider List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Supported Providers</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 12 }}>
+        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2, fontWeight: 600 }}>Supported Providers</div>
         {ALL_PROVIDERS.map(id => {
           const p = store.providers[id]
           const meta = PROVIDER_IDENTITY[id]
           const pct = getSessionPercent(p)
           return (
-            <div key={id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+            <div key={id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 12px', borderRadius: 14, background: 'linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)', border: '0.5px solid rgba(255,255,255,0.18)', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.25)', boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <ProviderLogo provider={id} size={16} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', fontWeight: 500 }}>{meta.name}</span>
-                  <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
+                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.9)', fontWeight: 500 }}>{meta.name}</span>
+                  <span style={{ fontSize: 8, padding: '1px 5px', borderRadius: 9999, background: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)', border: '0.5px solid rgba(255,255,255,0.2)' }}>
                     {p.activeModel}
                   </span>
                 </div>
               </div>
-              <span style={{ fontSize: 10, color: pct >= 80 ? '#f87171' : 'rgba(255,255,255,0.4)', fontVariantNumeric: 'tabular-nums' }}>
+              <span style={{ fontSize: 10, color: pct >= 80 ? '#f87171' : 'rgba(255,255,255,0.6)', fontVariantNumeric: 'tabular-nums', fontWeight: 500 }}>
                 {pct}% used
               </span>
             </div>
@@ -112,24 +122,27 @@ function PopupApp() {
       </div>
 
       {/* Theme Selector */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '0.5px solid rgba(255,255,255,0.06)' }}>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>Theme</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '0.5px solid rgba(255,255,255,0.15)' }}>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: 500 }}>Theme</span>
         <select
           value={store.currentTheme}
           onChange={e => store.setTheme(e.target.value as ThemeName)}
           style={{
-            background: 'rgba(255,255,255,0.05)',
-            border: '0.5px solid rgba(255,255,255,0.1)',
-            borderRadius: 6,
-            color: 'rgba(255,255,255,0.7)',
+            background: 'rgba(255,255,255,0.10)',
+            border: '0.5px solid rgba(255,255,255,0.25)',
+            borderRadius: 9999,
+            color: 'rgba(255,255,255,0.9)',
             fontSize: 10,
-            padding: '3px 6px',
+            padding: '4px 10px',
             outline: 'none',
             cursor: 'pointer',
+            maxWidth: 145,
+            boxSizing: 'border-box',
+            backdropFilter: 'blur(10px)',
           }}
         >
           {THEMES.map(t => (
-            <option key={t.id} value={t.id} style={{ background: '#0d0f14', color: '#ffffff' }}>{t.name}</option>
+            <option key={t.id} value={t.id} style={{ background: '#0f172a', color: '#ffffff' }}>{t.name}</option>
           ))}
         </select>
       </div>
