@@ -47,22 +47,39 @@ browser.alarms.onAlarm.addListener((alarm) => {
 // This pattern keeps storage writes in one place and avoids race conditions.
 
 async function fetchBase64Logo(domain: string): Promise<string> {
-  const url = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
-  const response = await fetch(url)
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  const domainVariants: string[] = [domain]
+  if (domain === 'openai.com') domainVariants.push('chatgpt.com')
+  if (domain === 'anthropic.com') domainVariants.push('claude.ai')
+  if (domain === 'google.com') domainVariants.push('gemini.google.com')
 
-  const buffer = await response.arrayBuffer()
-  if (buffer.byteLength < 200) throw new Error('Favicon too small (generic)')
-
-  let binary = ''
-  const bytes = new Uint8Array(buffer)
-  const len = bytes.byteLength
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i])
+  const urls: string[] = []
+  for (const d of domainVariants) {
+    urls.push(`https://cdn.brandfetch.io/${d}/w/400/h/400/icon`)
+    urls.push(`https://cdn.brandfetch.io/${d}/theme/dark/icon`)
+    urls.push(`https://www.google.com/s2/favicons?domain=${d}&sz=128`)
   }
-  const base64 = btoa(binary)
-  const mime = response.headers.get('content-type') || 'image/png'
-  return `data:${mime};base64,${base64}`
+
+  for (const url of urls) {
+    try {
+      const response = await fetch(url)
+      if (!response.ok) continue
+
+      const buffer = await response.arrayBuffer()
+      if (buffer.byteLength < 150) continue
+
+      let binary = ''
+      const bytes = new Uint8Array(buffer)
+      const len = bytes.byteLength
+      for (let i = 0; i < len; i++) {
+        binary += String.fromCharCode(bytes[i])
+      }
+      const base64 = btoa(binary)
+      const mime = response.headers.get('content-type') || 'image/png'
+      return `data:${mime};base64,${base64}`
+    } catch {}
+  }
+
+  throw new Error('Failed to fetch official logo from Brandfetch or Google CDN')
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
