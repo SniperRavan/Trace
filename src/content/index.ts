@@ -14,15 +14,6 @@ async function handleRoute() {
 
   const provider = detectProvider(hostname)
 
-  // SPA check for Grok (x.com)
-  if (provider === 'grok') {
-    const isGrokUrl = path.includes('/grok') || path.includes('/i/grok')
-    if (!isGrokUrl) {
-      cleanup()
-      return
-    }
-  }
-
   if (!provider) {
     cleanup()
     return
