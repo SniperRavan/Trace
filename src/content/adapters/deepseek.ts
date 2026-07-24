@@ -10,11 +10,11 @@ export class DeepSeekAdapter implements ProviderAdapter {
   private cleanupFns: (() => void)[] = []
 
   start() {
-    useTraceStore.getState().updateUsage('deepseek', { isActive: true })
+    (useTraceStore.getState() as any).updateUsage('deepseek', { isActive: true })
 
-    const cleanupListener = listenForTraceEvents('deepseek', (detail) => {
+    const cleanupListener = listenForTraceEvents('deepseek' as any, (detail) => {
       if (detail.modelName) {
-        useTraceStore.getState().setActiveModel('deepseek', detail.modelName, detail.contextLimit)
+        (useTraceStore.getState() as any).setActiveModel('deepseek', detail.modelName, detail.contextLimit)
       }
 
       let input = detail.inputTokens ?? 0
@@ -28,7 +28,7 @@ export class DeepSeekAdapter implements ProviderAdapter {
       const total = detail.totalTokens || input + output
       if (total <= 0) return
 
-      useTraceStore.getState().addTokens('deepseek', total, input, output)
+      (useTraceStore.getState() as any).addTokens('deepseek', total, input, output)
       console.log('[Trace] DeepSeekAdapter +', total, 'tokens (in:', input, 'out:', output, ')')
     })
 
@@ -38,6 +38,6 @@ export class DeepSeekAdapter implements ProviderAdapter {
 
   stop() {
     this.cleanupFns.forEach(fn => fn())
-    useTraceStore.getState().updateUsage('deepseek', { isActive: false })
+    ;(useTraceStore.getState() as any).updateUsage('deepseek', { isActive: false })
   }
 }
