@@ -11,8 +11,14 @@ export class ChatGPTAdapter implements ProviderAdapter {
 
   start() {
     useTraceStore.getState().updateUsage('chatgpt', { isActive: true })
+    this.startPlanDetector()
 
     const cleanupListener = listenForTraceEvents('chatgpt', (detail) => {
+      if (detail.planType) {
+        useTraceStore.getState().setProviderTier('chatgpt', detail.planType)
+        console.log('[Trace] ChatGPTAdapter auto-detected plan tier via API:', detail.planType)
+      }
+
       if (detail.modelName) {
         useTraceStore.getState().setActiveModel('chatgpt', detail.modelName, detail.contextLimit)
       }
@@ -33,7 +39,39 @@ export class ChatGPTAdapter implements ProviderAdapter {
     })
 
     this.cleanupFns.push(cleanupListener)
-    console.log('[Trace] ChatGPTAdapter started')
+    console.log('[Trace] ChatGPTAdapter started with persistent local plan auto-detection')
+  }
+
+  private startPlanDetector() {
+    let checks = 0
+    const interval = setInterval(() => {
+      checks++
+      try {
+        const lowerText = (document.body?.innerText || '').toLowerCase()
+        const profileText = (document.querySelector('[data-testid="user-profile-button"]')?.textContent || '').toLowerCase()
+        
+        if (lowerText.includes('chatgpt plus') || profileText.includes('plus') || lowerText.includes('plus subscriber')) {
+          useTraceStore.getState().setProviderTier('chatgpt', 'pro')
+          useTraceStore.getState().setTier('pro')
+          clearInterval(interval)
+        } else if (lowerText.includes('chatgpt team') || profileText.includes('team')) {
+          useTraceStore.getState().setProviderTier('chatgpt', 'team')
+          useTraceStore.getState().setTier('team')
+          clearInterval(interval)
+        } else if (lowerText.includes('chatgpt enterprise')) {
+          useTraceStore.getState().setProviderTier('chatgpt', 'enterprise')
+          useTraceStore.getState().setTier('enterprise')
+          clearInterval(interval)
+        } else if (lowerText.includes('upgrade to plus') || lowerText.includes('upgrade plan') || lowerText.includes('free plan') || profileText.includes('free')) {
+          useTraceStore.getState().setProviderTier('chatgpt', 'free')
+          useTraceStore.getState().setTier('free')
+          clearInterval(interval)
+        }
+      } catch {}
+
+      if (checks >= 20) clearInterval(interval)
+    }, 800)
+    this.cleanupFns.push(() => clearInterval(interval))
   }
 
   stop() {
