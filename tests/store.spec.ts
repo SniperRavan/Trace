@@ -60,10 +60,10 @@ describe('Trace Store', () => {
 
   it('should update active model name and context limit', () => {
     const store = useTraceStore.getState()
-    store.setActiveModel('deepseek', 'DeepSeek R1', 128000)
+    store.setActiveModel('gemini', 'Gemini 1.5 Pro', 2000000)
 
-    const deepseekState = useTraceStore.getState().providers.deepseek
-    expect(deepseekState.activeModel).toBe('DeepSeek R1')
-    expect(deepseekState.contextLimit).toBe(128000)
+    const geminiState = useTraceStore.getState().providers.gemini
+    expect(geminiState.activeModel).toBe('Gemini 1.5 Pro')
+    expect(geminiState.contextLimit).toBe(2000000)
   })
 })
