@@ -57,7 +57,7 @@ export function ProviderLogo({ provider, size = 24, className = '' }: ProviderLo
     overflow:        'hidden',
   }
 
-  const innerSize = Math.round(size * 0.62)
+  const innerSize = Math.round(size * 0.72)
 
   return (
     <div style={containerStyle} className={className} aria-label={meta.name}>
@@ -89,8 +89,11 @@ export function ProviderLogo({ provider, size = 24, className = '' }: ProviderLo
           width={innerSize}
           height={innerSize}
           onLoad={() => setImgReady(true)}
+          onError={() => setImgReady(false)}
           style={{
             position:        'absolute',
+            width:           innerSize,
+            height:          innerSize,
             borderRadius:    2,
             objectFit:       'contain',
             transition:      'opacity 0.3s ease',
