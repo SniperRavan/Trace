@@ -169,7 +169,7 @@ function defaultWeekly(id: ProviderId): UsagePeriod {
 const DEFAULT_MODEL_NAMES: Record<ProviderId, string> = {
   chatgpt: 'GPT-4o',
   claude: 'Claude 3.5 Sonnet',
-  gemini: 'Gemini 2.0 Flash',
+  gemini: '3.6 Flash',
 }
 
 function defaultProvider(id: ProviderId, tier: SubscriptionTier = 'pro'): ProviderState {
