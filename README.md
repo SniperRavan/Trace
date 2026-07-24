@@ -38,7 +38,7 @@
 
 ## ✦ About
 
-**Trace** monitors your daily token and quota consumption across AI providers — **ChatGPT**, **Claude**, **Gemini**, **Grok**, **Perplexity**, **DeepSeek**, and **Meta AI** — entirely locally. No cloud, no telemetry, no accounts.
+**Trace** monitors your daily token and quota consumption across core AI providers — **ChatGPT**, **Claude**, and **Gemini** — entirely locally. No cloud, no telemetry, no accounts.
 
 The design goal is to feel like a native part of the browser — something you glance at, not something you manage. Visually inspired by **Arc Browser**, **Raycast**, and **macOS system overlays**. Aesthetically rooted in Linux terminal rice color schemes (**Catppuccin**, **Nord**, **Tokyo Night**, **Gruvbox**, **Dracula**, **Everforest**).
 
@@ -46,29 +46,25 @@ The design goal is to feel like a native part of the browser — something you g
 
 ## ✨ Core Features
 
-- **🌐 7 Supported AI Providers** — ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek, and Meta AI.
+- **🌐 Core v1 Supported AI Providers** — ChatGPT, Claude, and Gemini.
+- **⚡ Local Plan Auto-Detection** — Automatically detects your subscription tier (**Free**, **Pro/Plus**, **Team**, **Enterprise**) locally from page sessions and API metadata without external servers.
 - **🛡️ Open-Mode Shadow DOM Isolation** — Attached directly to `<body>` on provider tabs with zero CSS leakage into host web pages.
 - **📊 Dual Session & Weekly Limit Tracking** — Live tracking for both session rate limits (e.g. 5-hour window) and weekly cumulative consumption with reset countdowns.
-- **⚡ Real-Time Network Interceptor** — MAIN world network hook intercepting fetch, XHR, and WebSocket streams across isolated extension script boundaries via `window.postMessage`.
-- **🎯 Dynamic Quota & Subscription Tier Presets** — Toggle between **Free (0.5x)**, **Pro/Plus (1.0x)**, **Team (2.5x)**, and **Enterprise (5.0x)** plans to dynamically scale quota limits.
-- **⏱️ Context Window & Prompt Cache Timer** — Live mini context window limit bars (e.g., 200k/128k/1M tokens) and 5-minute prompt cache TTL expiration countdowns.
+- **⚡ Real-Time Network Interceptor** — MAIN world network hook intercepting fetch and XHR streams across isolated extension script boundaries via `window.postMessage`.
+- **⏱️ Context Window & Prompt Cache Timer** — Live mini context window limit bars (e.g., 200k / 128k / 1M tokens) and 5-minute prompt cache TTL expiration countdowns.
 - **🧮 BPE Tokenization Engine** — Powered by `gpt-tokenizer` (`cl100k_base` / `o200k_base`) with character-ratio fallback (`~3.8 chars/token`).
 - **🎨 Custom SVG Sparkline Micro-Charts** — Expanded HUD analytics dashboard with SVG sparklines and theme switcher.
 - **🔒 Local-Only & Privacy First** — Zero tracking, zero telemetry.
 
 ---
 
-## 🌐 Supported Providers
+## 🌐 Supported Providers (v1)
 
-| Provider   | Color   | Domain              | Context Limit | Session / Weekly Limits | Dynamic Quota Support |
-|------------|---------|---------------------|---------------|-------------------------|-----------------------|
-| ChatGPT    | Emerald | `chatgpt.com`       | 128,000       | 40k / 200k tokens       | Stream & SSE Intercept |
-| Claude     | Amber   | `claude.ai`          | 200,000       | 45k / 300k tokens       | Native `/usage` + SSE |
-| Gemini     | Violet  | `gemini.google.com` | 1,000,000     | 60k / 500k tokens       | Protobuf & SSE Meta   |
-| Grok       | Silver  | `x.com`             | 128,000       | 25k / 100k tokens       | Stream Budget Parse   |
-| Perplexity | Cyan    | `perplexity.ai`     | 128,000       | 20k / 100k tokens       | WebSocket Framing     |
-| DeepSeek   | Blue    | `deepseek.com`      | 128,000       | 35k / 150k tokens       | SSE Delta & CoT Parse |
-| Meta AI    | Blue    | `meta.ai`           | 128,000       | 30k / 150k tokens       | Content Extraction    |
+| Provider   | Color   | Domain              | Context Limit | Session / Weekly Limits | Local Plan Auto-Detection & Quota Support |
+|------------|---------|---------------------|---------------|-------------------------|-------------------------------------------|
+| ChatGPT    | Emerald | `chatgpt.com`       | 128,000       | 40k / 200k tokens       | `/backend-api/me` + DOM Badge Auto-Detect  |
+| Claude     | Amber   | `claude.ai`          | 200,000       | 45k / 300k tokens       | `/api/organizations` + Native `/usage`    |
+| Gemini     | Violet  | `gemini.google.com` | 1,000,000     | 60k / 500k tokens       | Advanced Badge + Stream Metadata Parse    |
 
 ---
 
