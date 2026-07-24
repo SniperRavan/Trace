@@ -11,8 +11,14 @@ export class ClaudeAdapter implements ProviderAdapter {
 
   start() {
     useTraceStore.getState().updateUsage('claude', { isActive: true })
+    this.startPlanDetector()
 
     const cleanupListener = listenForTraceEvents('claude', (detail) => {
+      if (detail.planType) {
+        useTraceStore.getState().setProviderTier('claude', detail.planType)
+        console.log('[Trace] ClaudeAdapter auto-detected plan tier via API:', detail.planType)
+      }
+
       if (detail.modelName) {
         useTraceStore.getState().setActiveModel('claude', detail.modelName, detail.contextLimit)
       }
@@ -39,7 +45,35 @@ export class ClaudeAdapter implements ProviderAdapter {
     })
 
     this.cleanupFns.push(cleanupListener)
-    console.log('[Trace] ClaudeAdapter started')
+    console.log('[Trace] ClaudeAdapter started with persistent local plan auto-detection')
+  }
+
+  private startPlanDetector() {
+    let checks = 0
+    const interval = setInterval(() => {
+      checks++
+      try {
+        const lowerText = (document.body?.innerText || '').toLowerCase()
+        const upgradeBtn = document.querySelector('a[href*="upgrade"], button[aria-label*="Upgrade"], [class*="upgrade"]')
+        
+        if (lowerText.includes('claude pro') || lowerText.includes('pro plan')) {
+          useTraceStore.getState().setProviderTier('claude', 'pro')
+          useTraceStore.getState().setTier('pro')
+          clearInterval(interval)
+        } else if (lowerText.includes('claude team') || lowerText.includes('team plan')) {
+          useTraceStore.getState().setProviderTier('claude', 'team')
+          useTraceStore.getState().setTier('team')
+          clearInterval(interval)
+        } else if (lowerText.includes('free plan') || lowerText.includes('upgrade') || upgradeBtn) {
+          useTraceStore.getState().setProviderTier('claude', 'free')
+          useTraceStore.getState().setTier('free')
+          clearInterval(interval)
+        }
+      } catch {}
+
+      if (checks >= 20) clearInterval(interval)
+    }, 800)
+    this.cleanupFns.push(() => clearInterval(interval))
   }
 
   stop() {
