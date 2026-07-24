@@ -6,11 +6,11 @@ export class GrokAdapter implements ProviderAdapter {
   private cleanupFns: (() => void)[] = []
 
   start() {
-    useTraceStore.getState().updateUsage('grok', { isActive: true })
+    (useTraceStore.getState() as any).updateUsage('grok', { isActive: true })
 
-    const cleanupListener = listenForTraceEvents('grok', (detail) => {
+    const cleanupListener = listenForTraceEvents('grok' as any, (detail) => {
       if (detail.modelName) {
-        useTraceStore.getState().setActiveModel('grok', detail.modelName, detail.contextLimit)
+        (useTraceStore.getState() as any).setActiveModel('grok', detail.modelName, detail.contextLimit)
       }
 
       let inputTokens = detail.inputTokens ?? 0
@@ -24,7 +24,7 @@ export class GrokAdapter implements ProviderAdapter {
       const totalTokens = detail.totalTokens || inputTokens + outputTokens
       if (totalTokens <= 0) return
 
-      useTraceStore.getState().addTokens('grok', totalTokens, inputTokens, outputTokens)
+      (useTraceStore.getState() as any).addTokens('grok', totalTokens, inputTokens, outputTokens)
       console.log('[Trace] GrokAdapter +', totalTokens, 'tokens (in:', inputTokens, 'out:', outputTokens, ')')
     })
 
@@ -34,6 +34,6 @@ export class GrokAdapter implements ProviderAdapter {
 
   stop() {
     this.cleanupFns.forEach(fn => fn())
-    useTraceStore.getState().updateUsage('grok', { isActive: false })
+    ;(useTraceStore.getState() as any).updateUsage('grok', { isActive: false })
   }
 }
