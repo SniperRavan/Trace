@@ -43,6 +43,28 @@ global.chrome = {
   alarms: alarmsMock,
 } as any
 
+if (typeof global.window === 'undefined') {
+  const eventListeners: Record<string, Function[]> = {}
+  global.window = {
+    addEventListener: vi.fn().mockImplementation((type: string, fn: Function) => {
+      if (!eventListeners[type]) eventListeners[type] = []
+      eventListeners[type].push(fn)
+    }),
+    removeEventListener: vi.fn().mockImplementation((type: string, fn: Function) => {
+      if (eventListeners[type]) {
+        eventListeners[type] = eventListeners[type].filter(f => f !== fn)
+      }
+    }),
+    dispatchEvent: vi.fn().mockImplementation((event: any) => {
+      const type = event.type || (event.data ? 'message' : '')
+      if (eventListeners[type]) {
+        eventListeners[type].forEach(fn => fn(event))
+      }
+      return true
+    }),
+  } as any
+}
+
 beforeEach(() => {
   storageMock.get.mockClear()
   storageMock.set.mockClear()
@@ -53,3 +75,4 @@ beforeEach(() => {
     delete mockLocalStorage[key]
   }
 })
+
