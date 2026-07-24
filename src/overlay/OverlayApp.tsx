@@ -28,7 +28,7 @@ function TraceBubble() {
   const toggleOverlay = useTraceStore(s => s.toggleOverlay)
   const currentTheme = useTraceStore(s => s.currentTheme)
 
-  const [pos, setPos] = useState({ x: window.innerWidth - 80, y: 16 })
+  const [pos, setPos] = useState({ x: Math.max(16, window.innerWidth - 80), y: 16 })
   const [hidden, setHidden] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const [dragging, setDragging] = useState(false)
@@ -37,6 +37,18 @@ function TraceBubble() {
   const didDrag = useRef(false)
   const menuRef = useRef<HTMLDivElement>(null)
   const rightClickPending = useRef(false)
+
+  // Clamp bubble position on window resize so it never gets lost off-screen
+  useEffect(() => {
+    const handleResize = () => {
+      setPos(p => ({
+        x: Math.max(12, Math.min(window.innerWidth - 68, p.x)),
+        y: Math.max(12, Math.min(window.innerHeight - 68, p.y)),
+      }))
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button !== 0) return
@@ -51,8 +63,8 @@ function TraceBubble() {
     const onMove = (e: MouseEvent) => {
       didDrag.current = true
       setPos({
-        x: Math.max(0, Math.min(window.innerWidth - 60, e.clientX - dragOffset.current.x)),
-        y: Math.max(0, Math.min(window.innerHeight - 60, e.clientY - dragOffset.current.y)),
+        x: Math.max(12, Math.min(window.innerWidth - 68, e.clientX - dragOffset.current.x)),
+        y: Math.max(12, Math.min(window.innerHeight - 68, e.clientY - dragOffset.current.y)),
       })
     }
     const onUp = () => setDragging(false)
@@ -88,8 +100,11 @@ function TraceBubble() {
   }, [toggleOverlay])
 
   const panelWidth = expandedView ? 560 : 264
-  const panelLeft = Math.min(pos.x, window.innerWidth - panelWidth - 16)
-  const panelTop = pos.y + 62
+  const panelHeight = expandedView ? 340 : 380
+  const panelLeft = Math.max(12, Math.min(pos.x, window.innerWidth - panelWidth - 16))
+  const panelTop = pos.y + 62 + panelHeight > window.innerHeight
+    ? Math.max(12, pos.y - panelHeight - 10)
+    : Math.max(12, pos.y + 62)
 
   if (hidden) return null
 
@@ -99,21 +114,22 @@ function TraceBubble() {
         onMouseDown={onMouseDown} onClick={onClick} onContextMenu={onContextMenu}
         style={{
           position: 'absolute', left: pos.x, top: pos.y,
-          width: 52, height: 52, borderRadius: 16,
-          background: 'rgba(20,23,32,0.92)',
-          border: '0.5px solid rgba(255,255,255,0.12)',
-          backdropFilter: 'blur(20px)',
+          width: 54, height: 54, borderRadius: 20,
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(20,23,32,0.94) 70%)',
+          border: '1px solid rgba(255,255,255,0.30)',
+          backdropFilter: 'blur(24px) saturate(180%)',
+          WebkitBackdropFilter: 'blur(24px) saturate(180%)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           cursor: dragging ? 'grabbing' : 'grab',
           pointerEvents: 'auto', userSelect: 'none',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.5), 0 0 0 0.5px rgba(255,255,255,0.04)',
-          transition: dragging ? 'none' : 'box-shadow 0.2s',
+          boxShadow: 'inset 0 1.5px 1.5px rgba(255,255,255,0.55), inset 0 -1.5px 2px rgba(0,0,0,0.4), 0 12px 36px rgba(0,0,0,0.55)',
+          transition: dragging ? 'none' : 'box-shadow 0.2s, transform 0.2s',
         }}
       >
-        <div style={{ position: 'absolute', inset: -4, borderRadius: 20, border: '1.5px solid rgba(99,102,241,0.4)', animation: 'trace-pulse-ring 2.5s ease-in-out infinite', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', bottom: -3, right: -3, width: 10, height: 10, borderRadius: '50%', background: '#10b981', border: '2px solid #0d0f14', animation: 'trace-breathe 2s ease-in-out infinite' }} />
+        <div style={{ position: 'absolute', inset: -5, borderRadius: 25, border: '1px solid rgba(56,189,248,0.35)', animation: 'trace-pulse-ring 2.5s ease-in-out infinite', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: -2, right: -2, width: 11, height: 11, borderRadius: '50%', background: '#10b981', border: '2px solid #0d0f14', boxShadow: '0 0 8px #10b981', animation: 'trace-breathe 2s ease-in-out infinite' }} />
         <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-          <circle cx="11" cy="11" r="9" stroke="rgba(255,255,255,0.2)" strokeWidth="1.2" />
+          <circle cx="11" cy="11" r="9" stroke="rgba(255,255,255,0.25)" strokeWidth="1.2" />
           <path d="M7 11.5 Q9 8 11 11 Q13 14 15 10.5" stroke="#f59e0b" strokeWidth="1.6" strokeLinecap="round" fill="none" />
           <circle cx="11" cy="11" r="1.8" fill="rgba(245,158,11,0.2)" stroke="rgba(245,158,11,0.6)" strokeWidth="0.8" />
         </svg>
