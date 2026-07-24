@@ -7,8 +7,14 @@ export class GeminiAdapter implements ProviderAdapter {
 
   start() {
     useTraceStore.getState().updateUsage('gemini', { isActive: true })
+    this.startPlanDetector()
 
     const cleanupListener = listenForTraceEvents('gemini', (detail) => {
+      if (detail.planType) {
+        useTraceStore.getState().setProviderTier('gemini', detail.planType)
+        console.log('[Trace] GeminiAdapter auto-detected plan tier:', detail.planType)
+      }
+
       if (detail.modelName) {
         useTraceStore.getState().setActiveModel('gemini', detail.modelName, detail.contextLimit)
       }
@@ -29,7 +35,31 @@ export class GeminiAdapter implements ProviderAdapter {
     })
 
     this.cleanupFns.push(cleanupListener)
-    console.log('[Trace] GeminiAdapter started')
+    console.log('[Trace] GeminiAdapter started with persistent local plan auto-detection')
+  }
+
+  private startPlanDetector() {
+    let checks = 0
+    const interval = setInterval(() => {
+      checks++
+      try {
+        const lowerText = (document.body?.innerText || '').toLowerCase()
+        const advIcon = document.querySelector('mat-icon[fonticon="gemini_spark_sparkles_advanced"]') || document.querySelector('[aria-label*="Advanced"]')
+        if (lowerText.includes('gemini advanced') || advIcon) {
+          useTraceStore.getState().setProviderTier('gemini', 'pro')
+          useTraceStore.getState().setTier('pro')
+          useTraceStore.getState().setActiveModel('gemini', 'Gemini 1.5 Pro', 2000000)
+          clearInterval(interval)
+        } else if (lowerText.includes('try gemini advanced') || lowerText.includes('upgrade to gemini advanced') || lowerText.includes('try advanced') || lowerText.includes('free plan')) {
+          useTraceStore.getState().setProviderTier('gemini', 'free')
+          useTraceStore.getState().setTier('free')
+          clearInterval(interval)
+        }
+      } catch {}
+
+      if (checks >= 20) clearInterval(interval)
+    }, 800)
+    this.cleanupFns.push(() => clearInterval(interval))
   }
 
   stop() {
