@@ -24,65 +24,38 @@
     return (
       url.includes('claude.ai') ||
       url.includes('chatgpt.com') || url.includes('chat.openai.com') ||
-      url.includes('gemini.google.com') ||
-      url.includes('x.com') || url.includes('grok.com') ||
-      url.includes('perplexity.ai') ||
-      url.includes('deepseek.com') ||
-      url.includes('meta.ai')
+      url.includes('gemini.google.com')
     )
   }
 
-  function handleDeepSeek(response: Response, body: unknown) {
-    let userText = ''
-    let modelName = 'DeepSeek V3'
-    try {
-      const parsed = typeof body === 'string' ? JSON.parse(body) : body
-      if (parsed?.model?.includes('reasoner') || parsed?.model?.includes('r1')) {
-        modelName = 'DeepSeek R1'
+  function handleChatGPTAccountResponse(response: Response) {
+    response.clone().json().then((json) => {
+      let planType = 'free'
+      if (json?.plan_type === 'plus' || json?.plan_type === 'pro' || json?.account_plan?.is_paid_subscription) {
+        planType = 'pro'
+      } else if (json?.plan_type === 'team') {
+        planType = 'team'
+      } else if (json?.plan_type === 'enterprise') {
+        planType = 'enterprise'
       }
-      if (typeof parsed?.prompt === 'string') userText = parsed.prompt
-      else if (Array.isArray(parsed?.messages)) {
-        const last = parsed.messages[parsed.messages.length - 1]
-        if (typeof last?.content === 'string') userText = last.content
-      }
-    } catch {}
-
-    let assistantText = ''
-    readSSE(response.clone(), (raw) => {
-      try {
-        const d = JSON.parse(raw)
-        const delta = d?.choices?.[0]?.delta
-        if (delta?.reasoning_content) assistantText += delta.reasoning_content
-        if (delta?.content) assistantText += delta.content
-        if (!delta && typeof d?.choices?.[0]?.text === 'string') assistantText += d.choices[0].text
-        if (typeof d?.response === 'string') assistantText += d.response
-      } catch {}
-    }).then(() => {
-      log('[deepseek-fetch] done', { modelName, userTextLen: userText.length, assistantTextLen: assistantText.length })
-      if (userText || assistantText) dispatch('deepseek', { userText, assistantText, modelName, contextLimit: 128000 })
-    })
+      dispatch('chatgpt', { planType })
+    }).catch(() => {})
   }
 
-  function handleMetaAI(response: Response, body: unknown) {
-    let userText = ''
-    try {
-      const parsed = typeof body === 'string' ? JSON.parse(body) : body
-      if (typeof parsed?.message === 'string') userText = parsed.message
-      else if (typeof parsed?.prompt === 'string') userText = parsed.prompt
-      else if (typeof parsed?.query === 'string') userText = parsed.query
-    } catch {}
-
-    response.clone().text().then((text) => {
-      // Clean HTML tags and extract readable response text for accurate token estimation
-      let cleanText = text
-      try {
-        const parsed = JSON.parse(text)
-        cleanText = typeof parsed?.data === 'string' ? parsed.data : JSON.stringify(parsed)
-      } catch {
-        cleanText = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  function handleClaudeOrgsResponse(response: Response) {
+    response.clone().json().then((json) => {
+      const orgs = Array.isArray(json) ? json : [json]
+      let planType = 'free'
+      for (const org of orgs) {
+        if (org?.capabilities?.includes('claude_pro') || org?.rate_limit_tier?.includes('pro') || org?.has_pro_subscription) {
+          planType = 'pro'
+          break
+        } else if (org?.rate_limit_tier?.includes('team')) {
+          planType = 'team'
+          break
+        }
       }
-      log('[meta-fetch] done', { userTextLen: userText.length, cleanTextLen: cleanText.length })
-      if (userText || cleanText) dispatch('meta', { userText, assistantText: cleanText.slice(0, 4000), modelName: 'Meta AI Llama 3.3', contextLimit: 128000 })
+      dispatch('claude', { planType })
     }).catch(() => {})
   }
 
@@ -301,28 +274,74 @@
   // ════════════════════════════════════════════════════════════════
   // Gemini / Grok / Perplexity
   // ════════════════════════════════════════════════════════════════
-  function handleGemini(response: Response) {
+  function extractGeminiUserText(body: unknown): string {
+    if (!body) return ''
+    try {
+      const raw = typeof body === 'string' ? body : String(body)
+      const decoded = decodeURIComponent(raw)
+      const matches = decoded.match(/\["([^"\\]*(?:\\.[^"\\]*)*)"/g)
+      if (matches) {
+        for (const m of matches) {
+          const cleaned = m.slice(2, -1).replace(/\\n/g, '\n').replace(/\\"/g, '"')
+          if (cleaned.length > 2 && !cleaned.startsWith('http') && !cleaned.startsWith('c_') && !cleaned.startsWith('boq_')) {
+            return cleaned
+          }
+        }
+      }
+    } catch {}
+    return ''
+  }
+
+  function processGeminiText(text: string, userText: string = '') {
+    if (!text) return
+    log('[gemini] processing response length:', text.length)
+    let lastUsage: { inp: number; out: number } | null = null
+    const matches = text.matchAll(/\\?"usageMetadata\\?":\s*\\?\{([^}]+)\\?\}/g)
+    for (const m of matches) {
+      try {
+        const unescaped = m[1].replace(/\\"/g, '"')
+        const meta = JSON.parse('{' + unescaped + '}')
+        const inp = meta.promptTokenCount ?? 0
+        const out = meta.candidatesTokenCount ?? 0
+        if (inp || out) lastUsage = { inp, out }
+      } catch {}
+    }
+
+    let modelName = 'Gemini 2.0 Flash'
+    let contextLimit = 1000000
+    if (text.includes('1.5 Pro') || text.includes('gemini-1.5-pro') || text.includes('Advanced')) {
+      modelName = 'Gemini 1.5 Pro'
+      contextLimit = 2000000
+    }
+
+    if (lastUsage) {
+      log('[gemini] found numeric tokens:', lastUsage)
+      dispatch('gemini', {
+        inputTokens: lastUsage.inp,
+        outputTokens: lastUsage.out,
+        totalTokens: lastUsage.inp + lastUsage.out,
+        modelName,
+        contextLimit,
+      })
+    } else {
+      const cleanText = text.replace(/\\n/g, '\n').replace(/\\"/g, '"').slice(0, 15000)
+      if (userText || cleanText.length > 10) {
+        log('[gemini] fallback text estimate:', { userLen: userText.length, assistantLen: cleanText.length })
+        dispatch('gemini', {
+          userText,
+          assistantText: cleanText,
+          modelName,
+          contextLimit,
+        })
+      }
+    }
+  }
+
+  function handleGemini(response: Response, body?: unknown) {
+    const userText = extractGeminiUserText(body)
     response.clone().text().then((text) => {
-      log('[gemini] body length:', text.length)
-      const matches = text.matchAll(/\\?"usageMetadata\\?":\s*\\?\{([^}]+)\\?\}/g)
-      let lastUsage: { inp: number; out: number } | null = null
-      for (const m of matches) {
-        try {
-          const unescaped = m[1].replace(/\\"/g, '"')
-          const meta = JSON.parse('{' + unescaped + '}')
-          const inp = meta.promptTokenCount ?? 0
-          const out = meta.candidatesTokenCount ?? 0
-          if (inp || out) lastUsage = { inp, out }
-        } catch { }
-      }
-      if (lastUsage) {
-        dispatch('gemini', { inputTokens: lastUsage.inp, outputTokens: lastUsage.out, totalTokens: lastUsage.inp + lastUsage.out, modelName: 'Gemini 2.0 Flash', contextLimit: 1000000 })
-      } else if (text.length > 50) {
-        // Fallback: estimate from extracted response text payload
-        const cleanText = text.replace(/\\n/g, '\n').replace(/\\"/g, '"').slice(0, 10000)
-        dispatch('gemini', { userText: '', assistantText: cleanText, modelName: 'Gemini 2.0 Flash', contextLimit: 1000000 })
-      }
-    }).catch((e) => log('[gemini] error', e))
+      processGeminiText(text, userText)
+    }).catch((e) => log('[gemini] fetch error', e))
   }
 
   function handleGrok(response: Response) {
@@ -403,23 +422,18 @@
     if (isProviderUrl(url)) log('fetch', method, url)
 
     try {
-      if (url.includes('claude.ai') && path.includes('/usage')) {
+      if ((url.includes('chatgpt.com') || url.includes('chat.openai.com')) && (path.includes('/me') || path.includes('/accounts/check'))) {
+        handleChatGPTAccountResponse(response)
+      } else if (url.includes('claude.ai') && path.includes('/organizations')) {
+        handleClaudeOrgsResponse(response)
+      } else if (url.includes('claude.ai') && path.includes('/usage')) {
         handleClaudeUsageResponse(response)
       } else if (url.includes('claude.ai') && (path.includes('/completion') || path.includes('/chat_conversations')) && method === 'POST') {
         handleClaudeFetch(response, body)
       } else if ((url.includes('chatgpt.com') || url.includes('chat.openai.com')) && path.includes('/conversation') && method === 'POST') {
         handleChatGPTFetch(response, body)
-      } else if (url.includes('gemini.google.com') &&
-        (url.includes('StreamGenerate') || url.includes('batchrunquery') || url.includes('lamda') || url.includes('bard'))) {
-        handleGemini(response)
-      } else if (url.toLowerCase().includes('x.com') && (url.toLowerCase().includes('grok') || url.toLowerCase().includes('add_response'))) {
-        handleGrok(response)
-      } else if (url.includes('perplexity.ai') && (url.includes('query') || url.includes('search') || url.includes('ask'))) {
-        handlePerplexity(response)
-      } else if (url.includes('deepseek.com') && (path.includes('/chat') || path.includes('/completion'))) {
-        handleDeepSeek(response, body)
-      } else if (url.includes('meta.ai')) {
-        handleMetaAI(response, body)
+      } else if (url.includes('gemini.google.com') || path.includes('BardChatUi') || path.includes('StreamGenerate') || path.includes('batchrunquery')) {
+        handleGemini(response, body)
       }
     } catch (e) { log('fetch handler error', e) }
 
@@ -488,6 +502,16 @@
           if (this.readyState === 4) {
             log('[chatgpt-xhr] done', { userTextLen: userText.length, assistantTextLen: assistantText.length })
             if (userText || assistantText) dispatch('chatgpt', { userText, assistantText, modelName, contextLimit: 128000 })
+          }
+        })
+      } else if (url.includes('gemini.google.com') || path.includes('BardChatUi') || path.includes('StreamGenerate') || path.includes('batchrunquery')) {
+        const userText = extractGeminiUserText(body)
+        this.addEventListener('readystatechange', () => {
+          if (this.readyState === 4) {
+            let text = ''
+            try { text = this.responseText } catch { return }
+            log('[gemini-xhr] done', { userTextLen: userText.length, responseLen: text.length })
+            processGeminiText(text, userText)
           }
         })
       }
