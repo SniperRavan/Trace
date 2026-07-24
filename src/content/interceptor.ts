@@ -307,10 +307,16 @@
       } catch {}
     }
 
-    let modelName = 'Gemini 2.0 Flash'
+    let modelName = '3.6 Flash'
     let contextLimit = 1000000
-    if (text.includes('1.5 Pro') || text.includes('gemini-1.5-pro') || text.includes('Advanced')) {
-      modelName = 'Gemini 1.5 Pro'
+    if (text.includes('3.1 Pro') || text.includes('gemini-3.1-pro') || text.includes('3.1')) {
+      modelName = '3.1 Pro'
+      contextLimit = 2000000
+    } else if (text.includes('3.5 Flash-Lite') || text.includes('flash-lite')) {
+      modelName = '3.5 Flash-Lite'
+      contextLimit = 1000000
+    } else if (text.includes('Extended thinking') || text.includes('thinking')) {
+      modelName = 'Extended thinking'
       contextLimit = 2000000
     }
 
