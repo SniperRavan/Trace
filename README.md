@@ -26,13 +26,13 @@
 
 ## 📸 Preview
 
-|                                       Floating Ambient HUD Overlay                                       |                                         Expanded Analytics Dashboard                                         |
-| :------------------------------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------------------------: |
-| ![Floating Overlay](https://via.placeholder.com/400x250.png?text=Floating+Ambient+HUD+%E2%80%94+Compact) | ![Expanded Dashboard](https://via.placeholder.com/400x250.png?text=Expanded+Dashboard+%E2%80%94+Sparklines) |
+| Floating Ambient HUD Overlay | Expanded Analytics Dashboard |
+| :--------------------------: | :--------------------------: |
+| ![Floating Overlay](assets/preview-overlay.png) | ![Expanded Dashboard](assets/preview-dashboard.png) |
 
-|                                       Toolbar Popup Control Panel                                        |                                         Session & Weekly Rate Limits                                         |
-| :------------------------------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------------------------: |
-| ![Toolbar Popup](https://via.placeholder.com/400x250.png?text=Toolbar+Popup+%E2%80%94+Tier+Selector)    | ![Session and Weekly Limits](https://via.placeholder.com/400x250.png?text=Dual+Session+%2B+Weekly+Limits)   |
+| Toolbar Popup Control Panel | Session & Weekly Rate Limits |
+| :-------------------------: | :-------------------------: |
+| ![Toolbar Popup](assets/preview-popup.png) | ![Session & Weekly Limits](assets/preview-limits.png) |
 
 ---
 
@@ -130,13 +130,53 @@ npm test
 npm run build
 ```
 
-### Loading in Browser
+### 🧩 How to Load & Use Trace in Your Browser (Developer Mode)
 
-1. Open Google Chrome or any Chromium browser (Brave, Edge, Zen).
-2. Navigate to `chrome://extensions`.
-3. Enable **Developer mode** in the top right corner.
-4. Click **Load unpacked** and select the `dist/` directory from the repository.
-5. Open any supported AI provider tab (e.g. `claude.ai` or `chatgpt.com`).
+Since Trace is currently loaded locally as a developer build, follow these step-by-step instructions to load it into your browser:
+
+#### 🌐 For Chrome & Chromium Browsers (Brave, Edge, Arc, Opera, Vivaldi, Zen)
+
+1. **Build the extension package**:
+   Make sure you have compiled the latest build:
+   ```bash
+   npm run build
+   ```
+   This generates the production bundle inside the `dist/` directory.
+
+2. **Open Extensions Management**:
+   - Open your browser and navigate to `chrome://extensions` (or `edge://extensions` in Microsoft Edge, `brave://extensions` in Brave).
+   - Alternatively, click the **Extensions Menu** (puzzle piece icon 🧩) in your toolbar and select **Manage Extensions**.
+
+3. **Enable Developer Mode**:
+   - Locate the **Developer mode** toggle switch in the top-right corner of the Extensions page and turn it **ON** 🟢.
+
+4. **Load the `dist` Folder**:
+   - Click the **Load unpacked** button that appears in the top-left toolbar.
+   - In the file picker dialog, navigate to the `trace` project folder and select the **`dist`** directory (e.g. `/path/to/trace/dist`).
+   - Click **Select Folder** (or **Open**).
+
+5. **Verify Installation**:
+   - You should now see **Trace ⚡** listed under your installed extensions.
+   - Click the extension puzzle icon 🧩 in your browser toolbar and pin **Trace** for quick access.
+
+6. **Start Tracking**:
+   - Open any supported AI provider tab:
+     - 🟢 **ChatGPT**: [chatgpt.com](https://chatgpt.com)
+     - 🟠 **Claude**: [claude.ai](https://claude.ai)
+     - 🟣 **Gemini**: [gemini.google.com](https://gemini.google.com)
+   - The ambient HUD overlay will automatically appear in the bottom corner of the web page, quiet and isolated!
+
+---
+
+#### 🦊 For Mozilla Firefox
+
+1. **Build for Firefox**:
+   ```bash
+   npm run build:firefox
+   ```
+2. Open `about:debugging#/runtime/this-firefox` in Firefox.
+3. Click **Load Temporary Add-on...**
+4. Select `manifest.json` inside the generated `dist/` directory.
 
 ---
 
