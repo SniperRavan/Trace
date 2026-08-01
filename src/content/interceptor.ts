@@ -74,11 +74,12 @@
   function dispatch(provider: string, payload: Record<string, unknown>) {
     log('dispatch ->', provider, payload)
     try {
+      const targetOrigin = window.location.origin && window.location.origin !== 'null' ? window.location.origin : '*'
       window.postMessage({
         source: TRACE_MARKER,
         type: 'trace:tokens',
         detail: { provider, ...payload }
-      }, '*')
+      }, targetOrigin)
     } catch (e) {
       log('postMessage dispatch error', e)
     }

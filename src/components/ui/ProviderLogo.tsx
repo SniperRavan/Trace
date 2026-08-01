@@ -15,6 +15,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
+import DOMPurify from 'dompurify'
 import { fetchProviderLogo, FALLBACK_SVGS, PROVIDERS, type ProviderId } from '@/providers/logos'
 
 interface ProviderLogoProps {
@@ -74,9 +75,12 @@ export function ProviderLogo({ provider, size = 24, className = '' }: ProviderLo
           pointerEvents: 'none',
         }}
         dangerouslySetInnerHTML={{
-          __html: FALLBACK_SVGS[provider].replace(
-            '<svg',
-            `<svg width="${innerSize}" height="${innerSize}"`
+          __html: DOMPurify.sanitize(
+            FALLBACK_SVGS[provider].replace(
+              '<svg',
+              `<svg width="${innerSize}" height="${innerSize}"`
+            ),
+            { USE_PROFILES: { svg: true } }
           ),
         }}
       />
