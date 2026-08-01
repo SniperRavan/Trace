@@ -1,5 +1,7 @@
 /**
  * src/tracking/estimator.ts
+ *
+ * Per-provider tokenization engine with unicode/CJK and code density awareness.
  */
 
 import { encode } from 'gpt-tokenizer'
@@ -14,35 +16,72 @@ export function countTokens(text: string, provider: ProviderId | string = 'chatg
       return encode(text).length
     }
   } catch {
-    // Fall back to ratio heuristics if BPE fails
+    // Fall back to heuristics if BPE fails
   }
 
+  // Count non-English CJK characters (Chinese, Japanese, Korean) which take ~1.5 tokens per char
+  const cjkMatches = (text.match(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/g) || []).length
+  const cjkTokens = Math.ceil(cjkMatches * 1.5)
+
+  // Remove CJK chars for standard character ratio counting
+  const nonCjkText = text.replace(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/g, '')
+
+  // Code density adjustments (brackets, operators, indentation, keywords)
+  const codeSymbolMatches = (nonCjkText.match(/[\{\}\[\]\(\)<>=;:+\-*\/\\\^|&]/g) || []).length
+  const codeBonus = Math.ceil(codeSymbolMatches * 0.25)
+
   // Provider-specific tokenizer heuristics:
+  let baseTokens = 0
   switch (normalizedProvider) {
     case 'claude': {
-      // Anthropic tokenization: average ~3.5 characters per token, adjusted for whitespace & code block symbols
-      const codeBonus = (text.match(/[\{\}\[\]\(\)<>=;:+\-*\/]/g) || []).length * 0.2
-      return Math.ceil(text.length / 3.5 + codeBonus)
+      // Anthropic tokenization: ~3.5 chars/token
+      baseTokens = Math.ceil(nonCjkText.length / 3.5)
+      break
     }
     case 'gemini': {
-      // Google SentencePiece tokenization: average ~4.0 characters per token
-      return Math.ceil(text.length / 4.0)
+      // Google SentencePiece tokenization: ~4.0 chars/token
+      baseTokens = Math.ceil(nonCjkText.length / 4.0)
+      break
     }
     case 'deepseek': {
-      // DeepSeek Byte-level BPE: average ~3.6 characters per token
-      return Math.ceil(text.length / 3.6)
+      // DeepSeek Byte-level BPE: ~3.6 chars/token
+      baseTokens = Math.ceil(nonCjkText.length / 3.6)
+      break
     }
     default: {
       // General fallback heuristic (~3.8 chars/token)
-      return Math.ceil(text.length / 3.8)
+      baseTokens = Math.ceil(nonCjkText.length / 3.8)
+      break
     }
   }
+
+  return Math.max(1, baseTokens + cjkTokens + codeBonus)
 }
 
-export function estimateTokens(text: string, provider: ProviderId | string = 'chatgpt'): number {
-  const prompt = countTokens(text, provider)
-  const response = Math.ceil(prompt * 2.5)
-  return prompt + response
+export function estimateTokens(
+  promptText: string,
+  replyOrProvider?: string,
+  provider: ProviderId | string = 'chatgpt'
+): number {
+  let replyText = ''
+  let p = provider
+
+  if (typeof replyOrProvider === 'string' && (replyOrProvider === 'chatgpt' || replyOrProvider === 'claude' || replyOrProvider === 'gemini' || replyOrProvider === 'deepseek')) {
+    p = replyOrProvider as ProviderId
+  } else if (typeof replyOrProvider === 'string') {
+    replyText = replyOrProvider
+  }
+
+  const promptTokens = countTokens(promptText, p)
+  if (replyText) {
+    const replyTokens = countTokens(replyText, p)
+    return promptTokens + replyTokens
+  }
+
+  // Dynamic reply multiplier heuristic based on prompt length
+  const replyMultiplier = promptTokens > 500 ? 1.8 : 2.5
+  const estimatedReply = Math.ceil(promptTokens * replyMultiplier)
+  return promptTokens + estimatedReply
 }
 
 export function formatTokens(n: number): string {
