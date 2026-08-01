@@ -136,7 +136,7 @@ export function CompactPanel() {
       }}>
         <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>local-only · privacy first</span>
         <span
-          onClick={() => setExpandedView(true)}
+          onClick={() => setExpandedView(true, useTraceStore.getState().activeProvider)}
           style={{
             fontSize: 10,
             padding: '3px 9px',

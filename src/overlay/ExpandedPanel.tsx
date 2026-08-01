@@ -16,22 +16,23 @@ import {
 } from '@/storage/store'
 import { formatTokens, formatResetTime } from '@/tracking/estimator'
 import { ProviderLogo } from '@/components/ui/ProviderLogo'
+import { CustomDropdown } from '@/components/ui/CustomDropdown'
 
 const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini']
-const THEMES: { id: ThemeName; name: string }[] = [
-  { id: 'catppuccin', name: 'Catppuccin' },
-  { id: 'nord', name: 'Nord' },
-  { id: 'tokyonight', name: 'Tokyo Night' },
-  { id: 'gruvbox', name: 'Gruvbox' },
-  { id: 'dracula', name: 'Dracula' },
-  { id: 'everforest', name: 'Everforest' },
-  { id: 'liquidglass', name: 'Liquid Glass 🌊' },
+const THEMES: { id: ThemeName; label: string; icon: string }[] = [
+  { id: 'catppuccin', label: 'Catppuccin', icon: '🎨' },
+  { id: 'nord', label: 'Nord', icon: '❄️' },
+  { id: 'tokyonight', label: 'Tokyo Night', icon: '🌃' },
+  { id: 'gruvbox', label: 'Gruvbox', icon: '📜' },
+  { id: 'dracula', label: 'Dracula', icon: '🧛' },
+  { id: 'everforest', label: 'Everforest', icon: '🌲' },
+  { id: 'liquidglass', label: 'Liquid Glass', icon: '🌊' },
 ]
-const TIERS: { id: SubscriptionTier; name: string }[] = [
-  { id: 'free', name: 'Free Plan' },
-  { id: 'pro', name: 'Pro / Plus' },
-  { id: 'team', name: 'Team Plan' },
-  { id: 'enterprise', name: 'Enterprise' },
+const TIERS: { id: SubscriptionTier; label: string; icon: string }[] = [
+  { id: 'free', label: 'Free Plan', icon: '🌱' },
+  { id: 'pro', label: 'Pro / Plus', icon: '⚡' },
+  { id: 'team', label: 'Team Plan', icon: '👥' },
+  { id: 'enterprise', label: 'Enterprise', icon: '🏛️' },
 ]
 
 function useCountdown(resetAt: number): string {
@@ -120,13 +121,24 @@ function SparklineChart({ history, color, width = 310, height = 110 }: {
 
 export function ExpandedPanel() {
   const providers = useTraceStore(s => s.providers)
+  const expandedProvider = useTraceStore(s => s.expandedProvider)
+  const activeProvider = useTraceStore(s => s.activeProvider)
   const setExpandedView = useTraceStore(s => s.setExpandedView)
   const currentTheme = useTraceStore(s => s.currentTheme)
   const setTheme = useTraceStore(s => s.setTheme)
 
-  const [selectedId, setSelectedId] = useState<ProviderId>('chatgpt')
-  const activeState = providers[selectedId]
-  const meta = PROVIDER_IDENTITY[selectedId]
+  const [selectedId, setSelectedId] = useState<ProviderId>(() => expandedProvider || activeProvider || 'chatgpt')
+
+  useEffect(() => {
+    if (expandedProvider && expandedProvider !== selectedId) {
+      setSelectedId(expandedProvider)
+    } else if (!expandedProvider && activeProvider && activeProvider !== selectedId) {
+      setSelectedId(activeProvider)
+    }
+  }, [expandedProvider, activeProvider])
+
+  const activeState = providers[selectedId] ?? providers.chatgpt
+  const meta = PROVIDER_IDENTITY[selectedId] ?? PROVIDER_IDENTITY.chatgpt
 
   const sessionPct = getSessionPercent(activeState)
   const weeklyPct = getWeeklyPercent(activeState)
@@ -181,7 +193,10 @@ export function ExpandedPanel() {
             return (
               <div
                 key={id}
-                onClick={() => setSelectedId(id)}
+                onClick={() => {
+                  setSelectedId(id)
+                  useTraceStore.getState().setActiveProvider(id)
+                }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -202,6 +217,7 @@ export function ExpandedPanel() {
                       position: 'absolute', bottom: -2, right: -2,
                       width: 6, height: 6, borderRadius: '50%',
                       background: '#10b981', border: '1px solid #0d0f14',
+                      boxShadow: '0 0 4px #10b981',
                     }} />
                   )}
                 </div>
@@ -235,55 +251,20 @@ export function ExpandedPanel() {
           background: 'rgba(0,0,0,0.1)',
           display: 'flex',
           flexDirection: 'column',
-          gap: 8,
+          gap: 10,
         }}>
-          <div>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
-              {meta.name} Plan Tier
-            </div>
-            <select
-              value={activeState.tier || 'pro'}
-              onChange={e => useTraceStore.getState().setProviderTier(selectedId, e.target.value as SubscriptionTier)}
-              style={{
-                width: '100%',
-                background: 'rgba(255,255,255,0.04)',
-                border: '0.5px solid rgba(255,255,255,0.1)',
-                borderRadius: 6,
-                color: 'rgba(255,255,255,0.85)',
-                fontSize: 11,
-                padding: '4px 6px',
-                outline: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              {TIERS.map(t => (
-                <option key={t.id} value={t.id} style={{ background: '#0d0f14', color: '#fff' }}>{t.name}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Theme</div>
-            <select
-              value={currentTheme}
-              onChange={e => setTheme(e.target.value as any)}
-              style={{
-                width: '100%',
-                background: 'rgba(255,255,255,0.04)',
-                border: '0.5px solid rgba(255,255,255,0.1)',
-                borderRadius: 6,
-                color: 'rgba(255,255,255,0.85)',
-                fontSize: 11,
-                padding: '4px 6px',
-                outline: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              {THEMES.map(t => (
-                <option key={t.id} value={t.id} style={{ background: '#0d0f14', color: '#fff' }}>{t.name}</option>
-              ))}
-            </select>
-          </div>
+          <CustomDropdown
+            label={`${meta.name} Plan Tier`}
+            value={activeState.tier || 'pro'}
+            options={TIERS}
+            onChange={val => useTraceStore.getState().setProviderTier(selectedId, val as SubscriptionTier)}
+          />
+          <CustomDropdown
+            label="Theme"
+            value={currentTheme}
+            options={THEMES}
+            onChange={val => setTheme(val as ThemeName)}
+          />
         </div>
       </div>
 

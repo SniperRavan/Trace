@@ -23,23 +23,24 @@ function handleExport(format: 'csv' | 'json', storeProviders: ReturnType<typeof 
   URL.revokeObjectURL(url)
 }
 import { ProviderLogo } from '@/components/ui/ProviderLogo'
+import { CustomDropdown } from '@/components/ui/CustomDropdown'
 import '@/overlay/overlay.css'
 
-const TIERS: { id: SubscriptionTier; name: string }[] = [
-  { id: 'free', name: 'Free Plan (0.5x)' },
-  { id: 'pro', name: 'Pro / Plus (1.0x)' },
-  { id: 'team', name: 'Team Plan (2.5x)' },
-  { id: 'enterprise', name: 'Enterprise (5.0x)' },
+const TIERS: { id: SubscriptionTier; label: string; icon: string }[] = [
+  { id: 'free', label: 'Free Plan (0.5x)', icon: '🌱' },
+  { id: 'pro', label: 'Pro / Plus (1.0x)', icon: '⚡' },
+  { id: 'team', label: 'Team Plan (2.5x)', icon: '👥' },
+  { id: 'enterprise', label: 'Enterprise (5.0x)', icon: '🏛️' },
 ]
 
-const THEMES: { id: ThemeName; name: string }[] = [
-  { id: 'catppuccin', name: 'Catppuccin' },
-  { id: 'nord', name: 'Nord' },
-  { id: 'tokyonight', name: 'Tokyo Night' },
-  { id: 'gruvbox', name: 'Gruvbox' },
-  { id: 'dracula', name: 'Dracula' },
-  { id: 'everforest', name: 'Everforest' },
-  { id: 'liquidglass', name: 'Liquid Glass 🌊' },
+const THEMES: { id: ThemeName; label: string; icon: string }[] = [
+  { id: 'catppuccin', label: 'Catppuccin', icon: '🎨' },
+  { id: 'nord', label: 'Nord', icon: '❄️' },
+  { id: 'tokyonight', label: 'Tokyo Night', icon: '🌃' },
+  { id: 'gruvbox', label: 'Gruvbox', icon: '📜' },
+  { id: 'dracula', label: 'Dracula', icon: '🧛' },
+  { id: 'everforest', label: 'Everforest', icon: '🌲' },
+  { id: 'liquidglass', label: 'Liquid Glass', icon: '🌊' },
 ]
 
 function PopupApp() {
@@ -84,29 +85,13 @@ function PopupApp() {
       </div>
 
       {/* Plan Tier Selector */}
-      <div style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 100%)', padding: '10px 12px', borderRadius: 16, border: '0.5px solid rgba(255,255,255,0.20)', boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.3)', marginBottom: 12 }}>
-        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6, fontWeight: 600 }}>Subscription Plan</div>
-        <select
+      <div style={{ marginBottom: 12 }}>
+        <CustomDropdown
+          label="Subscription Plan"
           value={store.currentTier}
-          onChange={e => store.setTier(e.target.value as SubscriptionTier)}
-          style={{
-            width: '100%',
-            background: 'rgba(255,255,255,0.08)',
-            border: '0.5px solid rgba(255,255,255,0.25)',
-            borderRadius: 10,
-            color: '#ffffff',
-            fontSize: 11,
-            padding: '6px 10px',
-            outline: 'none',
-            cursor: 'pointer',
-            boxSizing: 'border-box',
-            backdropFilter: 'blur(10px)',
-          }}
-        >
-          {TIERS.map(t => (
-            <option key={t.id} value={t.id} style={{ background: '#0f172a', color: '#ffffff' }}>{t.name}</option>
-          ))}
-        </select>
+          options={TIERS}
+          onChange={val => store.setTier(val as SubscriptionTier)}
+        />
       </div>
 
       {/* Provider List */}
@@ -136,31 +121,13 @@ function PopupApp() {
       </div>
 
       {/* Theme Selector & Data Export */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: '0.5px solid rgba(255,255,255,0.15)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: 500 }}>Theme</span>
-          <select
-            value={store.currentTheme}
-            onChange={e => store.setTheme(e.target.value as ThemeName)}
-            style={{
-              background: 'rgba(255,255,255,0.10)',
-              border: '0.5px solid rgba(255,255,255,0.25)',
-              borderRadius: 9999,
-              color: 'rgba(255,255,255,0.9)',
-              fontSize: 10,
-              padding: '4px 10px',
-              outline: 'none',
-              cursor: 'pointer',
-              maxWidth: 145,
-              boxSizing: 'border-box',
-              backdropFilter: 'blur(10px)',
-            }}
-          >
-            {THEMES.map(t => (
-              <option key={t.id} value={t.id} style={{ background: '#0f172a', color: '#ffffff' }}>{t.name}</option>
-            ))}
-          </select>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 10, borderTop: '0.5px solid rgba(255,255,255,0.15)' }}>
+        <CustomDropdown
+          label="Theme"
+          value={store.currentTheme}
+          options={THEMES}
+          onChange={val => store.setTheme(val as ThemeName)}
+        />
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 2 }}>
           <button
