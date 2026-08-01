@@ -47,12 +47,14 @@ The design goal is to feel like a native part of the browser — something you g
 ## ✨ Core Features
 
 - **🌐 Expanded Manifest V3 Platform Support** — ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, and Meta AI.
-- **⚡ Local Plan Auto-Detection** — Automatically detects your subscription tier (**Free**, **Pro/Plus**, **Team**, **Enterprise**) locally from page sessions and API metadata without external servers.
+- **⚡ Independent Per-Provider Plan Tier Auto-Detection** — Automatically detects and manages subscription tiers (**Free**, **Pro/Plus**, **Team**, **Enterprise**) independently for each AI provider without global overwrites.
+- **🟢 Active Tab Auto-Routing & Indicator** — Floating HUD dynamically routes active provider indicators and expands directly to the currently active provider's dashboard (`claude.ai` → Claude, `chatgpt.com` → ChatGPT).
 - **🛡️ Open-Mode Shadow DOM Isolation & Security** — Attached directly to `<body>` on provider tabs with zero CSS leakage and DOMPurify SVG sanitization.
 - **📊 Dual Session & Weekly Limit Tracking** — Live tracking for both session rate limits (e.g. 5-hour window) and weekly cumulative consumption with reset countdowns.
 - **⚡ Real-Time Network Interceptor & SSE Stream Counting** — MAIN world network hook intercepting fetch and XHR streams with live line-by-line streaming token ticks via `window.postMessage` (restricted origin).
 - **⏱️ Context Window & Prompt Cache Timer** — Live mini context window limit bars (e.g., 200k / 128k / 1M tokens) and 5-minute prompt cache TTL expiration countdowns.
-- **🧮 Per-Provider Tokenization Engine** — Tailored tokenizer calculations for OpenAI (BPE), Anthropic (Claude), Google (Gemini), and Byte-level BPE (DeepSeek).
+- **🧮 Per-Provider Tokenization Engine** — Tailored tokenizer calculations for OpenAI (BPE), Anthropic (Claude), Google (Gemini RPC clean parsing), and Byte-level BPE (DeepSeek).
+- **🎛️ Custom Glassmorphic Icon Dropdowns** — Sleek dropdown UI for plan tiers and rice color themes with inline icons.
 - **💾 CSV & JSON Data Export** — One-click usage history backup and rate limit threshold alert tracking.
 - **🎨 Custom SVG Sparkline Micro-Charts** — Expanded HUD analytics dashboard with SVG sparklines and theme switcher.
 - **🔒 Local-Only & Privacy First** — Zero tracking, zero telemetry.
