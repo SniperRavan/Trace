@@ -110,53 +110,28 @@ export class ClaudeAdapter implements ProviderAdapter {
   }
 
   private startPlanDetector() {
-    let checks = 0
-    const interval = setInterval(() => {
-      checks++
+    const check = () => {
       try {
-        const lowerText = (document.body?.innerText || '').toLowerCase()
-        const upgradeBtn = document.querySelector('a[href*="upgrade"], button[aria-label*="Upgrade"], [class*="upgrade"]')
-        
-        // Model auto-detection from DOM button & text
-        const modelBtn = document.querySelector('button[aria-haspopup="menu"], [data-testid*="model-selector"]')
-        const btnText = (modelBtn?.textContent || '').trim()
-
-        let detectedModel = ''
-        if (btnText.toLowerCase().includes('sonnet 5') || lowerText.includes('sonnet 5')) {
-          const effortMatch = btnText.match(/Sonnet 5\s*(Low|Medium|High|Extra|Max)?/i)
-          if (effortMatch && effortMatch[1]) {
-            detectedModel = `Sonnet 5 ${effortMatch[1]}`
-          } else {
-            detectedModel = 'Sonnet 5'
-          }
-        } else if (lowerText.includes('3.7 sonnet') || lowerText.includes('claude 3.7')) {
-          detectedModel = 'Claude 3.7 Sonnet'
-        } else if (lowerText.includes('3.5 sonnet')) {
-          detectedModel = 'Claude 3.5 Sonnet'
-        } else if (lowerText.includes('haiku')) {
-          detectedModel = 'Claude 3.5 Haiku'
-        } else if (lowerText.includes('opus')) {
-          detectedModel = 'Claude 3 Opus'
-        }
-
+        const detectedModel = detectClaudeModelFromDOM()
         if (detectedModel) {
           useTraceStore.getState().setActiveModel('claude', detectedModel, 200000)
         }
 
+        const lowerText = (document.body?.innerText || '').toLowerCase()
+        const upgradeBtn = document.querySelector('a[href*="upgrade"], button[aria-label*="Upgrade"], [class*="upgrade"]')
+
         if (lowerText.includes('claude pro') || lowerText.includes('pro plan')) {
           useTraceStore.getState().setProviderTier('claude', 'pro')
-          clearInterval(interval)
         } else if (lowerText.includes('claude team') || lowerText.includes('team plan')) {
           useTraceStore.getState().setProviderTier('claude', 'team')
-          clearInterval(interval)
         } else if (lowerText.includes('free plan') || lowerText.includes('upgrade') || upgradeBtn) {
           useTraceStore.getState().setProviderTier('claude', 'free')
-          clearInterval(interval)
         }
       } catch {}
+    }
 
-      if (checks >= 20) clearInterval(interval)
-    }, 800)
+    check()
+    const interval = setInterval(check, 1500)
     this.cleanupFns.push(() => clearInterval(interval))
   }
 
@@ -164,4 +139,36 @@ export class ClaudeAdapter implements ProviderAdapter {
     this.cleanupFns.forEach(fn => fn())
     useTraceStore.getState().updateUsage('claude', { isActive: false })
   }
+}
+
+function detectClaudeModelFromDOM(): string | null {
+  try {
+    const buttons = Array.from(document.querySelectorAll('button'))
+    for (const btn of buttons) {
+      const text = (btn.textContent || '').trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ')
+      if (/Sonnet|Haiku|Opus/i.test(text)) {
+        if (text.length > 2 && text.length < 40 && !text.includes('Upgrade') && !text.includes('Creating')) {
+          return text
+        }
+      }
+    }
+
+    const composer = document.querySelector('fieldset, form, [class*="composer"], [class*="input"]')
+    if (composer) {
+      const btns = Array.from(composer.querySelectorAll('button'))
+      for (const btn of btns) {
+        const t = (btn.textContent || '').trim().replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ')
+        if (t && (t.includes('Sonnet') || t.includes('Haiku') || t.includes('Opus'))) {
+          return t
+        }
+      }
+    }
+
+    const fullText = document.body?.innerText || ''
+    const match = fullText.match(/(Sonnet\s*5\s*(?:Low|Medium|High|Extra|Max)?|Sonnet\s*3\.7\s*(?:Low|Medium|High|Extra|Max)?|Claude\s*3\.7\s*Sonnet|Sonnet\s*3\.5|Claude\s*3\.5\s*Sonnet|Claude\s*3\.5\s*Haiku|Claude\s*3\s*Opus)/i)
+    if (match) {
+      return match[1].trim()
+    }
+  } catch {}
+  return null
 }
