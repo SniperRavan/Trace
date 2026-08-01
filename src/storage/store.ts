@@ -409,7 +409,18 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
     scheduleWrite(get)
   },
 
-  setActiveProvider: (id) => set({ activeProvider: id }),
+  setActiveProvider: (id) => {
+    set(state => {
+      const updated = { ...state.providers }
+      ALL_PROVIDERS.forEach(pId => {
+        if (updated[pId]) {
+          updated[pId] = { ...updated[pId], isActive: pId === id }
+        }
+      })
+      return { activeProvider: id, expandedProvider: id, providers: updated }
+    })
+    scheduleWrite(get)
+  },
   toggleOverlay: () => set(s => ({ overlayOpen: !s.overlayOpen })),
   setExpandedView: (open, provider = null) => set({ expandedView: open, expandedProvider: provider ?? null }),
   setTheme: (theme) => {

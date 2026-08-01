@@ -59,11 +59,9 @@ export class GeminiAdapter implements ProviderAdapter {
 
         if (lowerText.includes('gemini advanced') || advIcon) {
           useTraceStore.getState().setProviderTier('gemini', 'pro')
-          useTraceStore.getState().setTier('pro')
           clearInterval(interval)
         } else if (lowerText.includes('try gemini advanced') || lowerText.includes('upgrade to gemini advanced') || lowerText.includes('try advanced') || lowerText.includes('free plan')) {
           useTraceStore.getState().setProviderTier('gemini', 'free')
-          useTraceStore.getState().setTier('free')
           clearInterval(interval)
         }
       } catch {}

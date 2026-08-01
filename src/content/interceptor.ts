@@ -336,12 +336,24 @@
         contextLimit,
       })
     } else {
-      const cleanText = text.replace(/\\n/g, '\n').replace(/\\"/g, '"').slice(0, 15000)
-      if (userText || cleanText.length > 10) {
-        log('[gemini] fallback text estimate:', { userLen: userText.length, assistantLen: cleanText.length })
+      let assistantText = ''
+      const stringMatches = text.match(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)
+      if (stringMatches) {
+        for (const sm of stringMatches) {
+          const s = sm.slice(1, -1).replace(/\\n/g, '\n').replace(/\\"/g, '"')
+          if (s.length > 20 && !s.startsWith('http') && !s.startsWith('boq_') && !s.startsWith('c_') && !s.includes('batchexecute') && !s.includes('BardChatUi')) {
+            assistantText += ' ' + s
+          }
+        }
+      }
+      if (!assistantText) {
+        assistantText = text.replace(/\\n/g, '\n').replace(/\\"/g, '"').slice(0, 15000)
+      }
+      if (userText || assistantText.length > 10) {
+        log('[gemini] fallback text estimate:', { userLen: userText.length, assistantLen: assistantText.length })
         dispatch('gemini', {
           userText,
-          assistantText: cleanText,
+          assistantText,
           modelName,
           contextLimit,
         })

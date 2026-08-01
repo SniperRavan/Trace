@@ -52,19 +52,15 @@ export class ChatGPTAdapter implements ProviderAdapter {
         
         if (lowerText.includes('chatgpt plus') || profileText.includes('plus') || lowerText.includes('plus subscriber')) {
           useTraceStore.getState().setProviderTier('chatgpt', 'pro')
-          useTraceStore.getState().setTier('pro')
           clearInterval(interval)
         } else if (lowerText.includes('chatgpt team') || profileText.includes('team')) {
           useTraceStore.getState().setProviderTier('chatgpt', 'team')
-          useTraceStore.getState().setTier('team')
           clearInterval(interval)
         } else if (lowerText.includes('chatgpt enterprise')) {
           useTraceStore.getState().setProviderTier('chatgpt', 'enterprise')
-          useTraceStore.getState().setTier('enterprise')
           clearInterval(interval)
         } else if (lowerText.includes('upgrade to plus') || lowerText.includes('upgrade plan') || lowerText.includes('free plan') || profileText.includes('free')) {
           useTraceStore.getState().setProviderTier('chatgpt', 'free')
-          useTraceStore.getState().setTier('free')
           clearInterval(interval)
         }
       } catch {}

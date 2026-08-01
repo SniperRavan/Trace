@@ -56,17 +56,25 @@ export class ClaudeAdapter implements ProviderAdapter {
         const lowerText = (document.body?.innerText || '').toLowerCase()
         const upgradeBtn = document.querySelector('a[href*="upgrade"], button[aria-label*="Upgrade"], [class*="upgrade"]')
         
+        // Model auto-detection from DOM
+        if (lowerText.includes('3.7 sonnet') || lowerText.includes('claude 3.7')) {
+          useTraceStore.getState().setActiveModel('claude', 'Claude 3.7 Sonnet', 200000)
+        } else if (lowerText.includes('3.5 sonnet') || lowerText.includes('sonnet 5') || lowerText.includes('sonnet')) {
+          useTraceStore.getState().setActiveModel('claude', 'Claude 3.5 Sonnet', 200000)
+        } else if (lowerText.includes('haiku')) {
+          useTraceStore.getState().setActiveModel('claude', 'Claude 3.5 Haiku', 200000)
+        } else if (lowerText.includes('opus')) {
+          useTraceStore.getState().setActiveModel('claude', 'Claude 3 Opus', 200000)
+        }
+
         if (lowerText.includes('claude pro') || lowerText.includes('pro plan')) {
           useTraceStore.getState().setProviderTier('claude', 'pro')
-          useTraceStore.getState().setTier('pro')
           clearInterval(interval)
         } else if (lowerText.includes('claude team') || lowerText.includes('team plan')) {
           useTraceStore.getState().setProviderTier('claude', 'team')
-          useTraceStore.getState().setTier('team')
           clearInterval(interval)
         } else if (lowerText.includes('free plan') || lowerText.includes('upgrade') || upgradeBtn) {
           useTraceStore.getState().setProviderTier('claude', 'free')
-          useTraceStore.getState().setTier('free')
           clearInterval(interval)
         }
       } catch {}
