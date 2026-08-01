@@ -5,9 +5,23 @@ import {
   PROVIDER_IDENTITY,
   ALL_PROVIDERS,
   getSessionPercent,
+  exportDataAsCSV,
+  exportDataAsJSON,
   type SubscriptionTier,
   type ThemeName,
 } from '@/storage/store'
+
+function handleExport(format: 'csv' | 'json', storeProviders: ReturnType<typeof useTraceStore.getState>['providers']) {
+  const content = format === 'csv' ? exportDataAsCSV(storeProviders) : exportDataAsJSON(storeProviders)
+  const mime = format === 'csv' ? 'text/csv' : 'application/json'
+  const blob = new Blob([content], { type: mime })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `trace-usage-backup.${format}`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 import { ProviderLogo } from '@/components/ui/ProviderLogo'
 import '@/overlay/overlay.css'
 
@@ -121,30 +135,75 @@ function PopupApp() {
         })}
       </div>
 
-      {/* Theme Selector */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 10, borderTop: '0.5px solid rgba(255,255,255,0.15)' }}>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: 500 }}>Theme</span>
-        <select
-          value={store.currentTheme}
-          onChange={e => store.setTheme(e.target.value as ThemeName)}
-          style={{
-            background: 'rgba(255,255,255,0.10)',
-            border: '0.5px solid rgba(255,255,255,0.25)',
-            borderRadius: 9999,
-            color: 'rgba(255,255,255,0.9)',
-            fontSize: 10,
-            padding: '4px 10px',
-            outline: 'none',
-            cursor: 'pointer',
-            maxWidth: 145,
-            boxSizing: 'border-box',
-            backdropFilter: 'blur(10px)',
-          }}
-        >
-          {THEMES.map(t => (
-            <option key={t.id} value={t.id} style={{ background: '#0f172a', color: '#ffffff' }}>{t.name}</option>
-          ))}
-        </select>
+      {/* Theme Selector & Data Export */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 10, borderTop: '0.5px solid rgba(255,255,255,0.15)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', fontWeight: 500 }}>Theme</span>
+          <select
+            value={store.currentTheme}
+            onChange={e => store.setTheme(e.target.value as ThemeName)}
+            style={{
+              background: 'rgba(255,255,255,0.10)',
+              border: '0.5px solid rgba(255,255,255,0.25)',
+              borderRadius: 9999,
+              color: 'rgba(255,255,255,0.9)',
+              fontSize: 10,
+              padding: '4px 10px',
+              outline: 'none',
+              cursor: 'pointer',
+              maxWidth: 145,
+              boxSizing: 'border-box',
+              backdropFilter: 'blur(10px)',
+            }}
+          >
+            {THEMES.map(t => (
+              <option key={t.id} value={t.id} style={{ background: '#0f172a', color: '#ffffff' }}>{t.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 2 }}>
+          <button
+            onClick={() => handleExport('csv', store.providers)}
+            style={{
+              flex: 1,
+              background: 'rgba(255,255,255,0.06)',
+              border: '0.5px solid rgba(255,255,255,0.2)',
+              borderRadius: 8,
+              color: 'rgba(255,255,255,0.8)',
+              fontSize: 10,
+              padding: '5px 8px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+            }}
+          >
+            <span>📊 Export CSV</span>
+          </button>
+          <button
+            onClick={() => handleExport('json', store.providers)}
+            style={{
+              flex: 1,
+              background: 'rgba(255,255,255,0.06)',
+              border: '0.5px solid rgba(255,255,255,0.2)',
+              borderRadius: 8,
+              color: 'rgba(255,255,255,0.8)',
+              fontSize: 10,
+              padding: '5px 8px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+            }}
+          >
+            <span>💾 Export JSON</span>
+          </button>
+        </div>
       </div>
     </div>
   )

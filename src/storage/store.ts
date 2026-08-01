@@ -152,6 +152,40 @@ export function buildMiniChartData(state: ProviderState): number[] {
   return state.history.map(p => p.sessionPercent)
 }
 
+export function exportDataAsJSON(providers: Record<ProviderId, ProviderState>): string {
+  return JSON.stringify({ exportedAt: new Date().toISOString(), providers }, null, 2)
+}
+
+export function exportDataAsCSV(providers: Record<ProviderId, ProviderState>): string {
+  const headers = ['Provider', 'Model', 'Tier', 'TotalTokens', 'InputTokens', 'OutputTokens', 'SessionUsed', 'SessionTotal', 'SessionPct', 'WeeklyUsed', 'WeeklyTotal', 'WeeklyPct']
+  const rows = Object.values(providers).map(p => [
+    p.id,
+    `"${p.activeModel}"`,
+    p.tier,
+    p.totalTokens,
+    p.inputTokens,
+    p.outputTokens,
+    p.sessionUsage.used,
+    p.sessionUsage.total,
+    `${getSessionPercent(p)}%`,
+    p.weeklyUsage.used,
+    p.weeklyUsage.total,
+    `${getWeeklyPercent(p)}%`,
+  ])
+  return [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
+}
+
+export function getThresholdAlerts(providers: Record<ProviderId, ProviderState>): { provider: ProviderId; type: 'session' | 'weekly'; percent: number }[] {
+  const alerts: { provider: ProviderId; type: 'session' | 'weekly'; percent: number }[] = []
+  Object.values(providers).forEach(p => {
+    const sPct = getSessionPercent(p)
+    const wPct = getWeeklyPercent(p)
+    if (sPct >= 80) alerts.push({ provider: p.id, type: 'session', percent: sPct })
+    if (wPct >= 80) alerts.push({ provider: p.id, type: 'weekly', percent: wPct })
+  })
+  return alerts
+}
+
 function appendHistory(history: HistoryPoint[], point: HistoryPoint): HistoryPoint[] {
   const next = [...history, point]
   if (next.length > MAX_HISTORY_POINTS) next.shift()
