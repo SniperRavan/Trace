@@ -173,6 +173,7 @@
     const clone = response.clone()
     let assistantText = ''
     let lineCount = 0
+    let lastDispatchedLength = 0
 
     readSSE(clone, (raw) => {
       lineCount++
@@ -189,10 +190,14 @@
             else if (t.length > assistantText.length) assistantText = t
           }
         }
+        if (assistantText.length - lastDispatchedLength > 30 || lineCount % 8 === 0) {
+          lastDispatchedLength = assistantText.length
+          dispatch('chatgpt', { userText, assistantText, modelName, contextLimit: 128000, isStreaming: true })
+        }
       } catch { }
     }).then((sawData) => {
       log('[chatgpt-fetch] done', { sawData, modelName, lineCount, userTextLen: userText.length, assistantTextLen: assistantText.length })
-      if (userText || assistantText) dispatch('chatgpt', { userText, assistantText, modelName, contextLimit: 128000 })
+      if (userText || assistantText) dispatch('chatgpt', { userText, assistantText, modelName, contextLimit: 128000, isStreaming: false })
     })
   }
 
