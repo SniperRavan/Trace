@@ -46,25 +46,30 @@ The design goal is to feel like a native part of the browser — something you g
 
 ## ✨ Core Features
 
-- **🌐 Core v1 Supported AI Providers** — ChatGPT, Claude, and Gemini.
+- **🌐 Expanded Manifest V3 Platform Support** — ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, and Meta AI.
 - **⚡ Local Plan Auto-Detection** — Automatically detects your subscription tier (**Free**, **Pro/Plus**, **Team**, **Enterprise**) locally from page sessions and API metadata without external servers.
-- **🛡️ Open-Mode Shadow DOM Isolation** — Attached directly to `<body>` on provider tabs with zero CSS leakage into host web pages.
+- **🛡️ Open-Mode Shadow DOM Isolation & Security** — Attached directly to `<body>` on provider tabs with zero CSS leakage and DOMPurify SVG sanitization.
 - **📊 Dual Session & Weekly Limit Tracking** — Live tracking for both session rate limits (e.g. 5-hour window) and weekly cumulative consumption with reset countdowns.
-- **⚡ Real-Time Network Interceptor** — MAIN world network hook intercepting fetch and XHR streams across isolated extension script boundaries via `window.postMessage`.
+- **⚡ Real-Time Network Interceptor & SSE Stream Counting** — MAIN world network hook intercepting fetch and XHR streams with live line-by-line streaming token ticks via `window.postMessage` (restricted origin).
 - **⏱️ Context Window & Prompt Cache Timer** — Live mini context window limit bars (e.g., 200k / 128k / 1M tokens) and 5-minute prompt cache TTL expiration countdowns.
-- **🧮 BPE Tokenization Engine** — Powered by `gpt-tokenizer` (`cl100k_base` / `o200k_base`) with character-ratio fallback (`~3.8 chars/token`).
+- **🧮 Per-Provider Tokenization Engine** — Tailored tokenizer calculations for OpenAI (BPE), Anthropic (Claude), Google (Gemini), and Byte-level BPE (DeepSeek).
+- **💾 CSV & JSON Data Export** — One-click usage history backup and rate limit threshold alert tracking.
 - **🎨 Custom SVG Sparkline Micro-Charts** — Expanded HUD analytics dashboard with SVG sparklines and theme switcher.
 - **🔒 Local-Only & Privacy First** — Zero tracking, zero telemetry.
 
 ---
 
-## 🌐 Supported Providers (v1)
+## 🛠️ Tech Stack
 
-| Provider   | Color   | Domain              | Context Limit | Session / Weekly Limits | Local Plan Auto-Detection & Quota Support |
-|------------|---------|---------------------|---------------|-------------------------|-------------------------------------------|
-| ChatGPT    | Emerald | `chatgpt.com`       | 128,000       | 40k / 200k tokens       | `/backend-api/me` + DOM Badge Auto-Detect  |
-| Claude     | Amber   | `claude.ai`          | 200,000       | 45k / 300k tokens       | `/api/organizations` + Native `/usage`    |
-| Gemini     | Violet  | `gemini.google.com` | 1,000,000     | 60k / 500k tokens       | Advanced Badge + Stream Metadata Parse    |
+| Layer        | Technology                  | Why                                      |
+|--------------|-----------------------------|------------------------------------------|
+| UI           | React 19 + TypeScript 5.7   | Modern component model, strict type safety |
+| Build        | Vite 6                      | Lightning fast multi-bundle builds       |
+| Styling      | Tailwind CSS + CSS vars     | Utility classes + Shadow DOM tokens      |
+| State        | Zustand 5                   | React 19-native lightweight state        |
+| Tokenizer    | gpt-tokenizer + Per-Provider| Exact BPE & tailored provider estimators |
+| Security     | DOMPurify + Origin Scope    | SAST hardened SVG & postMessage sandbox  |
+| Isolation    | Shadow DOM (`open` mode)    | Zero CSS bleed between overlay and page  |
 
 ---
 
