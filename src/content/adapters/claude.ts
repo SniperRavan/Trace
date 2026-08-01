@@ -86,23 +86,10 @@ export class ClaudeAdapter implements ProviderAdapter {
       if (!usageRes.ok) return
       const usage = await usageRes.json()
 
-      if (usage?.five_hour?.utilization != null || usage?.seven_day?.utilization != null || usage?.message_limit) {
-        const sessionPct = usage.five_hour?.utilization != null
-          ? Math.round(usage.five_hour.utilization * 100)
-          : (usage.message_limit?.remaining != null ? Math.round((1 - usage.message_limit.remaining / 45) * 100) : undefined)
-
-        const weeklyPct = usage.seven_day?.utilization != null
-          ? Math.round(usage.seven_day.utilization * 100)
-          : undefined
-
-        const resetAtMs = usage.five_hour?.resets_at
-          ? new Date(usage.five_hour.resets_at).getTime()
-          : (usage.message_limit?.reset_at ? new Date(usage.message_limit.reset_at).getTime() : undefined)
-
-        if (sessionPct != null || weeklyPct != null) {
-          useTraceStore.getState().setExactUsage('claude', sessionPct, weeklyPct, resetAtMs)
-          console.log('[Trace] ClaudeAdapter fetched server-side exact usage:', { sessionPct, weeklyPct, resetAtMs })
-        }
+      const { sessionPct, weeklyPct, resetAtMs } = parseClaudeUsagePayload(usage)
+      if (sessionPct != null || weeklyPct != null) {
+        useTraceStore.getState().setExactUsage('claude', sessionPct, weeklyPct, resetAtMs)
+        console.log('[Trace] ClaudeAdapter fetched server-side exact usage:', { sessionPct, weeklyPct, resetAtMs })
       }
     } catch (err) {
       console.warn('[Trace] ClaudeAdapter fetchServerUsage failed:', err)
@@ -171,4 +158,65 @@ function detectClaudeModelFromDOM(): string | null {
     }
   } catch {}
   return null
+}
+
+export function parseClaudeUsagePayload(json: any): { sessionPct?: number; weeklyPct?: number; resetAtMs?: number } {
+  let sessionPct: number | undefined
+  let weeklyPct: number | undefined
+  let resetAtMs: number | undefined
+
+  if (!json || typeof json !== 'object') return {}
+
+  // 1. Check authoritative `limits` array (new Anthropic API format)
+  if (Array.isArray(json.limits) && json.limits.length > 0) {
+    for (const entry of json.limits) {
+      const rawPct = entry.percent ?? entry.percentage ?? entry.utilization
+      const resetStr = entry.resets_at ?? entry.reset_at
+
+      if (entry.kind === 'session') {
+        sessionPct = normalizePercent(rawPct)
+        if (resetStr) resetAtMs = new Date(resetStr).getTime()
+      } else if (entry.kind === 'weekly_all' || entry.kind === 'weekly_scoped') {
+        const p = normalizePercent(rawPct)
+        if (p != null && (weeklyPct == null || p > weeklyPct)) {
+          weeklyPct = p
+        }
+      }
+    }
+  }
+
+  // 2. Fallback to top-level five_hour & seven_day (old format)
+  if (sessionPct == null && json.five_hour) {
+    const rawPct = json.five_hour.utilization ?? json.five_hour.percent ?? json.five_hour.percentage
+    sessionPct = normalizePercent(rawPct)
+    if (json.five_hour.resets_at) resetAtMs = new Date(json.five_hour.resets_at).getTime()
+  }
+
+  if (weeklyPct == null && json.seven_day) {
+    const rawPct = json.seven_day.utilization ?? json.seven_day.percent ?? json.seven_day.percentage
+    weeklyPct = normalizePercent(rawPct)
+  }
+
+  // 3. Fallback to message_limit
+  if (sessionPct == null && json.message_limit) {
+    if (json.message_limit.remaining != null) {
+      const total = json.message_limit.limit ?? 45
+      sessionPct = Math.round((1 - json.message_limit.remaining / total) * 100)
+    } else if (json.message_limit.utilization != null) {
+      sessionPct = normalizePercent(json.message_limit.utilization)
+    }
+    if (json.message_limit.reset_at) resetAtMs = new Date(json.message_limit.reset_at).getTime()
+  }
+
+  return { sessionPct, weeklyPct, resetAtMs }
+}
+
+function normalizePercent(val: unknown): number | undefined {
+  if (val == null) return undefined
+  const num = typeof val === 'string' ? parseFloat(val) : Number(val)
+  if (isNaN(num)) return undefined
+  if (num > 0 && num <= 1.0) {
+    return Math.round(num * 100)
+  }
+  return Math.min(100, Math.max(0, Math.round(num)))
 }

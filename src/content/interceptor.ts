@@ -62,10 +62,41 @@
   function handleClaudeUsageResponse(response: Response) {
     response.clone().json().then((json) => {
       log('[claude-usage-api]', json)
-      if (json?.five_hour?.utilization != null || json?.seven_day?.utilization != null) {
-        const sessionPct = json.five_hour?.utilization != null ? Math.round(json.five_hour.utilization * 100) : undefined
-        const weeklyPct = json.seven_day?.utilization != null ? Math.round(json.seven_day.utilization * 100) : undefined
-        const resetAtMs = json.five_hour?.resets_at ? new Date(json.five_hour.resets_at).getTime() : undefined
+      let sessionPct: number | undefined
+      let weeklyPct: number | undefined
+      let resetAtMs: number | undefined
+
+      const normalizePct = (val: unknown): number | undefined => {
+        if (val == null) return undefined
+        const num = typeof val === 'string' ? parseFloat(val) : Number(val)
+        if (isNaN(num)) return undefined
+        if (num > 0 && num <= 1.0) return Math.round(num * 100)
+        return Math.min(100, Math.max(0, Math.round(num)))
+      }
+
+      if (Array.isArray(json?.limits) && json.limits.length > 0) {
+        for (const entry of json.limits) {
+          const rawPct = entry.percent ?? entry.percentage ?? entry.utilization
+          const resetStr = entry.resets_at ?? entry.reset_at
+          if (entry.kind === 'session') {
+            sessionPct = normalizePct(rawPct)
+            if (resetStr) resetAtMs = new Date(resetStr).getTime()
+          } else if (entry.kind === 'weekly_all' || entry.kind === 'weekly_scoped') {
+            const p = normalizePct(rawPct)
+            if (p != null && (weeklyPct == null || p > weeklyPct)) weeklyPct = p
+          }
+        }
+      }
+
+      if (sessionPct == null && json?.five_hour) {
+        sessionPct = normalizePct(json.five_hour.utilization ?? json.five_hour.percent)
+        if (json.five_hour.resets_at) resetAtMs = new Date(json.five_hour.resets_at).getTime()
+      }
+      if (weeklyPct == null && json?.seven_day) {
+        weeklyPct = normalizePct(json.seven_day.utilization ?? json.seven_day.percent)
+      }
+
+      if (sessionPct != null || weeklyPct != null) {
         dispatch('claude', { isExactUsage: true, sessionPct, weeklyPct, resetAtMs })
       }
     }).catch(() => {})
