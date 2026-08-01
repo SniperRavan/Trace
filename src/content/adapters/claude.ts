@@ -56,15 +56,30 @@ export class ClaudeAdapter implements ProviderAdapter {
         const lowerText = (document.body?.innerText || '').toLowerCase()
         const upgradeBtn = document.querySelector('a[href*="upgrade"], button[aria-label*="Upgrade"], [class*="upgrade"]')
         
-        // Model auto-detection from DOM
-        if (lowerText.includes('3.7 sonnet') || lowerText.includes('claude 3.7')) {
-          useTraceStore.getState().setActiveModel('claude', 'Claude 3.7 Sonnet', 200000)
-        } else if (lowerText.includes('3.5 sonnet') || lowerText.includes('sonnet 5') || lowerText.includes('sonnet')) {
-          useTraceStore.getState().setActiveModel('claude', 'Claude 3.5 Sonnet', 200000)
+        // Model auto-detection from DOM button & text
+        const modelBtn = document.querySelector('button[aria-haspopup="menu"], [data-testid*="model-selector"]')
+        const btnText = (modelBtn?.textContent || '').trim()
+
+        let detectedModel = ''
+        if (btnText.toLowerCase().includes('sonnet 5') || lowerText.includes('sonnet 5')) {
+          const effortMatch = btnText.match(/Sonnet 5\s*(Low|Medium|High|Extra|Max)?/i)
+          if (effortMatch && effortMatch[1]) {
+            detectedModel = `Sonnet 5 ${effortMatch[1]}`
+          } else {
+            detectedModel = 'Sonnet 5'
+          }
+        } else if (lowerText.includes('3.7 sonnet') || lowerText.includes('claude 3.7')) {
+          detectedModel = 'Claude 3.7 Sonnet'
+        } else if (lowerText.includes('3.5 sonnet')) {
+          detectedModel = 'Claude 3.5 Sonnet'
         } else if (lowerText.includes('haiku')) {
-          useTraceStore.getState().setActiveModel('claude', 'Claude 3.5 Haiku', 200000)
+          detectedModel = 'Claude 3.5 Haiku'
         } else if (lowerText.includes('opus')) {
-          useTraceStore.getState().setActiveModel('claude', 'Claude 3 Opus', 200000)
+          detectedModel = 'Claude 3 Opus'
+        }
+
+        if (detectedModel) {
+          useTraceStore.getState().setActiveModel('claude', detectedModel, 200000)
         }
 
         if (lowerText.includes('claude pro') || lowerText.includes('pro plan')) {

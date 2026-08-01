@@ -206,13 +206,17 @@
   // ════════════════════════════════════════════════════════════════
   function extractClaudeRequestText(body: unknown): { userText: string; modelName: string } {
     let userText = ''
-    let modelName = 'Claude 3.5 Sonnet'
+    let modelName = 'Sonnet 5'
     try {
       const parsed = typeof body === 'string' ? JSON.parse(body) : body
       if (parsed?.model) {
-        if (parsed.model.includes('haiku')) modelName = 'Claude 3.5 Haiku'
-        else if (parsed.model.includes('opus')) modelName = 'Claude 3 Opus'
-        else if (parsed.model.includes('sonnet')) modelName = 'Claude 3.5 Sonnet'
+        const m = String(parsed.model).toLowerCase()
+        if (m.includes('sonnet-5') || m.includes('sonnet5') || m.includes('claude-sonnet-5')) modelName = 'Sonnet 5'
+        else if (m.includes('3-7') || m.includes('3.7')) modelName = 'Claude 3.7 Sonnet'
+        else if (m.includes('haiku')) modelName = 'Claude 3.5 Haiku'
+        else if (m.includes('opus')) modelName = 'Claude 3 Opus'
+        else if (m.includes('sonnet-3-5') || m.includes('3.5')) modelName = 'Claude 3.5 Sonnet'
+        else if (m.includes('sonnet')) modelName = 'Sonnet 5'
       }
       if (typeof (parsed as any)?.prompt === 'string') userText = (parsed as any).prompt
       else if (typeof (parsed as any)?.text === 'string') userText = (parsed as any).text
