@@ -12,6 +12,11 @@ export class ClaudeAdapter implements ProviderAdapter {
   start() {
     useTraceStore.getState().updateUsage('claude', { isActive: true })
     this.startPlanDetector()
+    this.fetchServerUsage()
+
+    // Poll server-side official rate limits every 45s
+    const usageInterval = setInterval(() => this.fetchServerUsage(), 45_000)
+    this.cleanupFns.push(() => clearInterval(usageInterval))
 
     const cleanupListener = listenForTraceEvents('claude', (detail) => {
       if (detail.planType) {
@@ -33,8 +38,8 @@ export class ClaudeAdapter implements ProviderAdapter {
       let output = detail.outputTokens ?? 0
 
       if (!input && !output) {
-        if (detail.userText) input = countTokens(detail.userText)
-        if (detail.assistantText) output = countTokens(detail.assistantText)
+        if (detail.userText) input = countTokens(detail.userText, 'claude')
+        if (detail.assistantText) output = countTokens(detail.assistantText, 'claude')
       }
 
       const total = detail.totalTokens || input + output
@@ -45,7 +50,63 @@ export class ClaudeAdapter implements ProviderAdapter {
     })
 
     this.cleanupFns.push(cleanupListener)
-    console.log('[Trace] ClaudeAdapter started with persistent local plan auto-detection')
+    console.log('[Trace] ClaudeAdapter started with persistent server-side usage syncing')
+  }
+
+  private async fetchServerUsage() {
+    try {
+      const orgsRes = await fetch('/api/organizations', {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin',
+      })
+      if (!orgsRes.ok) return
+      const orgs = await orgsRes.json()
+      const orgList = Array.isArray(orgs) ? orgs : [orgs]
+      if (orgList.length === 0) return
+
+      let planType: 'free' | 'pro' | 'team' | 'enterprise' = 'free'
+      for (const org of orgList) {
+        if (org?.capabilities?.includes('claude_pro') || org?.rate_limit_tier?.includes('pro') || org?.has_pro_subscription) {
+          planType = 'pro'
+          break
+        } else if (org?.rate_limit_tier?.includes('team')) {
+          planType = 'team'
+          break
+        }
+      }
+      useTraceStore.getState().setProviderTier('claude', planType)
+
+      const primaryOrgId = orgList[0]?.uuid || orgList[0]?.id
+      if (!primaryOrgId) return
+
+      const usageRes = await fetch(`/api/organizations/${primaryOrgId}/usage`, {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin',
+      })
+      if (!usageRes.ok) return
+      const usage = await usageRes.json()
+
+      if (usage?.five_hour?.utilization != null || usage?.seven_day?.utilization != null || usage?.message_limit) {
+        const sessionPct = usage.five_hour?.utilization != null
+          ? Math.round(usage.five_hour.utilization * 100)
+          : (usage.message_limit?.remaining != null ? Math.round((1 - usage.message_limit.remaining / 45) * 100) : undefined)
+
+        const weeklyPct = usage.seven_day?.utilization != null
+          ? Math.round(usage.seven_day.utilization * 100)
+          : undefined
+
+        const resetAtMs = usage.five_hour?.resets_at
+          ? new Date(usage.five_hour.resets_at).getTime()
+          : (usage.message_limit?.reset_at ? new Date(usage.message_limit.reset_at).getTime() : undefined)
+
+        if (sessionPct != null || weeklyPct != null) {
+          useTraceStore.getState().setExactUsage('claude', sessionPct, weeklyPct, resetAtMs)
+          console.log('[Trace] ClaudeAdapter fetched server-side exact usage:', { sessionPct, weeklyPct, resetAtMs })
+        }
+      }
+    } catch (err) {
+      console.warn('[Trace] ClaudeAdapter fetchServerUsage failed:', err)
+    }
   }
 
   private startPlanDetector() {

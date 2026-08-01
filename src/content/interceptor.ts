@@ -249,6 +249,15 @@
         if (d.usage.input_tokens != null) state.inputTokens = d.usage.input_tokens
       }
       
+      if (d.type === 'message_limit' || d.message_limit || d.type === 'rate_limit') {
+        const limit = d.message_limit ?? d
+        const sessionPct = limit.utilization != null ? Math.round(limit.utilization * 100) : (limit.remaining != null ? Math.round((1 - limit.remaining / 45) * 100) : undefined)
+        const resetAtMs = limit.resets_at ? new Date(limit.resets_at).getTime() : (limit.reset_at ? new Date(limit.reset_at).getTime() : undefined)
+        if (sessionPct != null) {
+          dispatch('claude', { isExactUsage: true, sessionPct, resetAtMs })
+        }
+      }
+
       if (d.type === 'content_block_delta' && d.delta?.text) {
         state.assistantText += d.delta.text
       } else if (typeof d?.delta?.text === 'string') {
@@ -452,11 +461,11 @@
     try {
       if ((url.includes('chatgpt.com') || url.includes('chat.openai.com')) && (path.includes('/me') || path.includes('/accounts/check'))) {
         handleChatGPTAccountResponse(response)
-      } else if (url.includes('claude.ai') && path.includes('/organizations')) {
-        handleClaudeOrgsResponse(response)
       } else if (url.includes('claude.ai') && path.includes('/usage')) {
         handleClaudeUsageResponse(response)
-      } else if (url.includes('claude.ai') && (path.includes('/completion') || path.includes('/chat_conversations')) && method === 'POST') {
+      } else if (url.includes('claude.ai') && path.includes('/organizations')) {
+        handleClaudeOrgsResponse(response)
+      } else if (url.includes('claude.ai') && (path.includes('/completion') || path.includes('/chat_conversations') || path.includes('/messages') || path.includes('/conversations')) && method === 'POST') {
         handleClaudeFetch(response, body)
       } else if ((url.includes('chatgpt.com') || url.includes('chat.openai.com')) && path.includes('/conversation') && method === 'POST') {
         handleChatGPTFetch(response, body)
