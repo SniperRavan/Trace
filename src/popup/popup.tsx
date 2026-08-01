@@ -126,6 +126,7 @@ function PopupApp() {
           label="Theme"
           value={store.currentTheme}
           options={THEMES}
+          direction="up"
           onChange={val => store.setTheme(val as ThemeName)}
         />
 

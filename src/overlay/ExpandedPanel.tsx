@@ -257,12 +257,14 @@ export function ExpandedPanel() {
             label={`${meta.name} Plan Tier`}
             value={activeState.tier || 'pro'}
             options={TIERS}
+            direction="up"
             onChange={val => useTraceStore.getState().setProviderTier(selectedId, val as SubscriptionTier)}
           />
           <CustomDropdown
             label="Theme"
             value={currentTheme}
             options={THEMES}
+            direction="up"
             onChange={val => setTheme(val as ThemeName)}
           />
         </div>
