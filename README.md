@@ -46,17 +46,19 @@ The design goal is to feel like a native part of the browser — something you g
 
 ## ✨ Core Features
 
-- **🌐 Expanded Manifest V3 Platform Support** — ChatGPT, Claude, Gemini, DeepSeek, Grok, Perplexity, and Meta AI.
+- **🌐 Expanded Manifest V3 Platform Support** — Focused high-precision tracking for **Claude**, **ChatGPT**, and **Gemini** (with architecture ready for DeepSeek, Grok, Perplexity, and Meta AI).
+- **🎨 Official Vector Brand Icons** — Embedded SVG vector logos directly from `assets/Ai's-Image/` for Claude, OpenAI (ChatGPT), and Gemini for 0ms rendering and authentic branding.
 - **⚡ Independent Per-Provider Plan Tier Auto-Detection** — Automatically detects and manages subscription tiers (**Free**, **Pro/Plus**, **Team**, **Enterprise**) independently for each AI provider without global overwrites.
-- **🟢 Active Tab Auto-Routing & Indicator** — Floating HUD dynamically routes active provider indicators and expands directly to the currently active provider's dashboard (`claude.ai` → Claude, `chatgpt.com` → ChatGPT).
+- **🟢 Active Tab Auto-Routing & Indicator** — Floating HUD dynamically routes active provider indicators and expands directly to the currently active provider's dashboard (`claude.ai` → Claude, `chatgpt.com` → ChatGPT, `gemini.google.com` → Gemini).
 - **🛡️ Open-Mode Shadow DOM Isolation & Security** — Attached directly to `<body>` on provider tabs with zero CSS leakage and DOMPurify SVG sanitization.
 - **📊 Dual Session & Weekly Limit Tracking** — Live tracking for both session rate limits (e.g. 5-hour window) and weekly cumulative consumption with reset countdowns.
-- **⚡ Real-Time Network Interceptor & SSE Stream Counting** — MAIN world network hook intercepting fetch and XHR streams with live line-by-line streaming token ticks via `window.postMessage` (restricted origin).
+- **⚡ Real-Time Network Interceptor & SSE Stream Counting** — MAIN world network hook intercepting fetch/XHR streams with live streaming token ticks via `window.postMessage`.
+- **🚨 Automated 429 Rate-Limit & Reset Header Parsing** — Intercepts HTTP 429 rate limit errors and extracts server reset timestamps (`resets_at`, `retry-after`, `x-ratelimit-reset-requests`) for Claude, ChatGPT, and Gemini.
+- **⚡ Per-Message Conversation Token Caching** — High-performance message fingerprint caching (`TokenCache`) preventing redundant token calculations during continuous streaming.
 - **⏱️ Context Window & Prompt Cache Timer** — Live mini context window limit bars (e.g., 200k / 128k / 1M tokens) and 5-minute prompt cache TTL expiration countdowns.
-- **🧮 Per-Provider Tokenization Engine** — Tailored tokenizer calculations for OpenAI (BPE), Anthropic (Claude), Google (Gemini RPC clean parsing), and Byte-level BPE (DeepSeek).
+- **🧮 Per-Provider Tokenization Engine** — Tailored tokenizer calculations for OpenAI (cl100k BPE), Anthropic (Claude), and Google (Gemini RPC clean parsing) with CJK and code density awareness.
 - **🎛️ Custom Glassmorphic Icon Dropdowns** — Sleek dropdown UI for plan tiers and rice color themes with inline icons.
 - **💾 CSV & JSON Data Export** — One-click usage history backup and rate limit threshold alert tracking.
-- **🎨 Custom SVG Sparkline Micro-Charts** — Expanded HUD analytics dashboard with SVG sparklines and theme switcher.
 - **🔒 Local-Only & Privacy First** — Zero tracking, zero telemetry.
 
 ---

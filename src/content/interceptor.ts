@@ -151,6 +151,44 @@
     return sawData
   }
 
+  function handleRateLimitError(provider: 'claude' | 'chatgpt' | 'gemini', response: Response) {
+    if (response.status !== 429) return
+
+    const retryAfter = response.headers.get('retry-after') || response.headers.get('x-ratelimit-reset-requests')
+    let resetAtMs: number | undefined
+    if (retryAfter) {
+      const seconds = parseFloat(retryAfter)
+      if (!isNaN(seconds)) {
+        resetAtMs = Date.now() + (seconds * 1000)
+      } else {
+        const parsedDate = Date.parse(retryAfter)
+        if (!isNaN(parsedDate)) resetAtMs = parsedDate
+      }
+    }
+
+    response.clone().json().then((errorData) => {
+      if (provider === 'claude') {
+        let limitDetails: any = null
+        if (errorData?.type === 'error' && errorData?.error?.message) {
+          try { limitDetails = JSON.parse(errorData.error.message) } catch {}
+        }
+        const resetsAtStr = limitDetails?.resetsAt || limitDetails?.resets_at || errorData?.resets_at
+        if (resetsAtStr) resetAtMs = new Date(resetsAtStr).getTime()
+        dispatch('claude', { isExactUsage: true, sessionPct: 100, resetAtMs: resetAtMs || (Date.now() + 5 * 3600 * 1000) })
+      } else if (provider === 'chatgpt') {
+        const resetSeconds = errorData?.cleared_in || errorData?.reset_in
+        if (resetSeconds && typeof resetSeconds === 'number') {
+          resetAtMs = Date.now() + (resetSeconds * 1000)
+        }
+        dispatch('chatgpt', { sessionPct: 100, resetAtMs: resetAtMs || (Date.now() + 3 * 3600 * 1000) })
+      } else if (provider === 'gemini') {
+        dispatch('gemini', { sessionPct: 100, resetAtMs: resetAtMs || (Date.now() + 4 * 3600 * 1000) })
+      }
+    }).catch(() => {
+      dispatch(provider, { sessionPct: 100, resetAtMs: resetAtMs || (Date.now() + 4 * 3600 * 1000) })
+    })
+  }
+
   // ════════════════════════════════════════════════════════════════
   // ChatGPT — parse prompt + assistant response + auto model name
   // ════════════════════════════════════════════════════════════════
@@ -490,6 +528,12 @@
     if (isProviderUrl(url)) log('fetch', method, url)
 
     try {
+      if (response.status === 429) {
+        if (url.includes('claude.ai')) handleRateLimitError('claude', response)
+        else if (url.includes('chatgpt.com') || url.includes('chat.openai.com')) handleRateLimitError('chatgpt', response)
+        else if (url.includes('gemini.google.com')) handleRateLimitError('gemini', response)
+      }
+
       if ((url.includes('chatgpt.com') || url.includes('chat.openai.com')) && (path.includes('/me') || path.includes('/accounts/check'))) {
         handleChatGPTAccountResponse(response)
       } else if (url.includes('claude.ai') && path.includes('/usage')) {
