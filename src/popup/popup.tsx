@@ -158,6 +158,20 @@ function PopupApp() {
                       exact
                     </span>
                   )}
+                  <button
+                    onClick={() => store.toggleProviderEnabled(id)}
+                    style={{
+                      padding: '1px 5px',
+                      borderRadius: 3,
+                      border: p.enabled ? '0.5px solid rgba(16,185,129,0.35)' : '0.5px solid rgba(239,68,68,0.35)',
+                      background: p.enabled ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+                      color: p.enabled ? '#34d399' : '#f87171',
+                      fontSize: 8,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {p.enabled ? 'On' : 'Off'}
+                  </button>
                 </div>
                 <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
                   {formatTokens(observed)} tok

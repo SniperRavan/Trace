@@ -3,18 +3,22 @@
  *
  * Trace State Management & Observability Store.
  * 
- * Core Design:
+ * Core Design & Release Gates:
  * - Separates Observed Tokens (server vs estimated) from Provider Quotas (dynamic/unavailable)
- * - Supports multi-token classification (input, output, reasoning, cached)
+ * - Multi-token classification (input, output, reasoning, cached)
  * - Idempotent event processing via SHA-256 eventId deduplication
- * - 100% local-first storage (chrome.storage.local) with JSON import/export
+ * - Schema versioning (v2.0) and backwards-compatible storage migration
+ * - Independent per-provider feature flags / adapter toggles
+ * - 100% local-first storage with guarded JSON import/export and zero prompt retention
  */
 
 import { create } from 'zustand'
 
+export const SCHEMA_VERSION = 2
 export const ANALYTICS_REFRESH_INTERVAL = 60_000
 export const MAX_HISTORY_POINTS = 60
 export const MAX_SEEN_EVENTS = 500
+export const MAX_IMPORT_SIZE_BYTES = 2 * 1024 * 1024 // 2MB
 
 export function isContextValid(): boolean {
   try {
@@ -78,6 +82,7 @@ export interface HistoryPoint {
 
 export interface ProviderState {
   id: ProviderId
+  enabled: boolean
   observedTokens: number
   serverTokens: number
   estimatedTokens: number
@@ -189,6 +194,7 @@ export function defaultProvider(id: ProviderId, tier: SubscriptionTier = 'pro'):
 
   return {
     id,
+    enabled: true,
     observedTokens: 0,
     serverTokens: 0,
     estimatedTokens: 0,
@@ -227,6 +233,41 @@ export function makeDefaultProviders(): Record<ProviderId, ProviderState> {
   return Object.fromEntries(ALL_PROVIDERS.map(id => [id, defaultProvider(id)])) as Record<ProviderId, ProviderState>
 }
 
+// ── Schema Migration Runner ───────────────────────────────────────────────────
+
+export function migrateStorage(raw: any): Record<ProviderId, ProviderState> {
+  const result = makeDefaultProviders()
+  if (!raw || typeof raw !== 'object') return result
+
+  ALL_PROVIDERS.forEach(id => {
+    const s = raw[id]
+    if (s && typeof s === 'object') {
+      const def = defaultProvider(id, s.tier || 'pro')
+      result[id] = {
+        ...def,
+        enabled: typeof s.enabled === 'boolean' ? s.enabled : true,
+        observedTokens: Number(s.observedTokens ?? s.totalTokens ?? 0),
+        serverTokens: Number(s.serverTokens ?? 0),
+        estimatedTokens: Number(s.estimatedTokens ?? 0),
+        inputTokens: Number(s.inputTokens ?? 0),
+        outputTokens: Number(s.outputTokens ?? 0),
+        reasoningTokens: Number(s.reasoningTokens ?? 0),
+        cachedInputTokens: Number(s.cachedInputTokens ?? 0),
+        totalTokens: Number(s.totalTokens ?? 0),
+        contextTokens: Number(s.contextTokens ?? 0),
+        contextLimit: Number(s.contextLimit ?? CONTEXT_WINDOW_LIMITS[id] ?? 128_000),
+        activeModel: s.activeModel || DEFAULT_MODELS[id],
+        tier: s.tier || 'pro',
+        planPolicy: s.planPolicy || def.planPolicy,
+        seenEventIds: Array.isArray(s.seenEventIds) ? s.seenEventIds.slice(-MAX_SEEN_EVENTS) : [],
+        history: Array.isArray(s.history) ? s.history.slice(-MAX_HISTORY_POINTS) : [],
+      }
+    }
+  })
+
+  return result
+}
+
 // ── Observation and Quota Helpers ──────────────────────────────────────────
 
 export function getObservedTokens(state: ProviderState): number {
@@ -251,7 +292,6 @@ export function getWeeklyPercent(state: ProviderState): number {
 }
 
 export function getRemaining(state: ProviderState, _type?: 'session' | 'weekly'): number {
-  // Return remaining context tokens rather than a synthetic account quota
   return Math.max(0, state.contextLimit - state.contextTokens)
 }
 
@@ -302,6 +342,7 @@ export function exportDataAsJSON(providers: Record<ProviderId, ProviderState>): 
   return JSON.stringify(
     {
       version: '2.0',
+      schemaVersion: SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       scope: 'local-browser-profile-only',
       providers,
@@ -314,6 +355,7 @@ export function exportDataAsJSON(providers: Record<ProviderId, ProviderState>): 
 export function exportDataAsCSV(providers: Record<ProviderId, ProviderState>): string {
   const headers = [
     'Provider',
+    'Enabled',
     'Model',
     'Tier',
     'ObservedTokens',
@@ -330,6 +372,7 @@ export function exportDataAsCSV(providers: Record<ProviderId, ProviderState>): s
   ]
   const rows = Object.values(providers).map(p => [
     p.id,
+    p.enabled ? 'true' : 'false',
     `"${p.activeModel}"`,
     p.tier,
     getObservedTokens(p),
@@ -363,6 +406,7 @@ export interface TraceStore {
   loadFromStorage: () => Promise<void>
   persistToStorage: () => Promise<void>
   recordUsage: (record: UsageRecord, eventId?: string) => boolean
+  toggleProviderEnabled: (id: ProviderId) => void
   addTokens: (
     id: ProviderId,
     total: number,
@@ -397,6 +441,7 @@ function scheduleWrite(getState: () => TraceStore) {
     if (!isContextValid()) return
     try {
       await chrome.storage.local.set({
+        trace_schema_version: SCHEMA_VERSION,
         trace_state: getState().providers,
         trace_theme: getState().currentTheme,
       })
@@ -444,37 +489,16 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
   loadFromStorage: async () => {
     if (!isContextValid()) return
     try {
-      const result = await chrome.storage.local.get(['trace_state', 'trace_theme'])
+      const result = await chrome.storage.local.get(['trace_state', 'trace_theme', 'trace_schema_version'])
       const savedTheme = (result.trace_theme as ThemeName) || 'catppuccin'
       if (!result.trace_state) {
         set({ currentTheme: savedTheme })
         return
       }
-      const saved = result.trace_state as Record<ProviderId, Partial<ProviderState>>
-      const now = Date.now()
-      const merged = Object.fromEntries(
-        ALL_PROVIDERS.map(id => {
-          const s = saved[id]
-          const def = defaultProvider(id, s?.tier || 'pro')
-          if (!s) return [id, def]
 
-          const policy = s.planPolicy ?? def.planPolicy
-          const restored: ProviderState = {
-            ...def,
-            ...s,
-            planPolicy: policy,
-            isActive: false,
-            history: (s.history ?? []).slice(-MAX_HISTORY_POINTS),
-            seenEventIds: (s.seenEventIds ?? []).slice(-MAX_SEEN_EVENTS),
-            contextTokens: s.contextTokens ?? 0,
-            contextLimit: s.contextLimit ?? CONTEXT_WINDOW_LIMITS[id] ?? 128_000,
-            tier: s.tier || 'pro',
-            activeModel: s.activeModel || DEFAULT_MODELS[id],
-          }
-          return [id, restored]
-        })
-      ) as Record<ProviderId, ProviderState>
-      set({ providers: merged, currentTheme: savedTheme })
+      // Run migration runner if schema version is older or missing
+      const migrated = migrateStorage(result.trace_state)
+      set({ providers: migrated, currentTheme: savedTheme })
     } catch (err) {
       if (err instanceof Error && err.message.includes('context invalidated')) return
       console.error('[Trace Store] load failed:', err)
@@ -489,6 +513,7 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
     if (!isContextValid()) return
     try {
       await chrome.storage.local.set({
+        trace_schema_version: SCHEMA_VERSION,
         trace_state: get().providers,
         trace_theme: get().currentTheme,
       })
@@ -498,9 +523,29 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
     }
   },
 
+  toggleProviderEnabled: (id) => {
+    set(state => {
+      const p = state.providers[id]
+      if (!p) return state
+      return {
+        providers: {
+          ...state.providers,
+          [id]: { ...p, enabled: !p.enabled },
+        },
+      }
+    })
+    scheduleWrite(get)
+  },
+
   recordUsage: (record: UsageRecord, eventId?: string): boolean => {
     const id = record.provider
     if (!ALL_PROVIDERS.includes(id)) return false
+
+    // Respect feature flag toggle: if provider is disabled, drop record
+    const currentProvider = get().providers[id]
+    if (currentProvider && currentProvider.enabled === false) {
+      return false
+    }
 
     let wasApplied = false
     set(state => {
@@ -759,10 +804,21 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
 
   importDataFromJSON: (jsonStr: string) => {
     try {
+      // 1. File size guard (2MB max)
+      if (jsonStr.length > MAX_IMPORT_SIZE_BYTES) {
+        return { success: false, importedCount: 0, error: 'File exceeds 2MB size limit' }
+      }
+
+      // 2. Schema parse & validation
       const parsed = JSON.parse(jsonStr)
       const importedProviders = parsed.providers
       if (!importedProviders || typeof importedProviders !== 'object') {
         return { success: false, importedCount: 0, error: 'Invalid format: missing providers object' }
+      }
+
+      const clampNum = (n: any, max = 100_000_000) => {
+        if (typeof n !== 'number' || isNaN(n) || !isFinite(n) || n < 0) return 0
+        return Math.min(n, max)
       }
 
       let count = 0
@@ -770,18 +826,20 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
         const merged = { ...state.providers }
         ALL_PROVIDERS.forEach(id => {
           const imp = importedProviders[id]
-          if (imp) {
+          if (imp && typeof imp === 'object') {
             const current = merged[id] || defaultProvider(id)
-            const combinedSeen = Array.from(new Set([...current.seenEventIds, ...(imp.seenEventIds || [])])).slice(-MAX_SEEN_EVENTS)
+            const combinedSeen = Array.from(new Set([...current.seenEventIds, ...(Array.isArray(imp.seenEventIds) ? imp.seenEventIds : [])])).slice(-MAX_SEEN_EVENTS)
+            
             merged[id] = {
               ...current,
-              observedTokens: Math.max(current.observedTokens, imp.observedTokens || 0),
-              serverTokens: Math.max(current.serverTokens, imp.serverTokens || 0),
-              estimatedTokens: Math.max(current.estimatedTokens, imp.estimatedTokens || 0),
-              inputTokens: Math.max(current.inputTokens, imp.inputTokens || 0),
-              outputTokens: Math.max(current.outputTokens, imp.outputTokens || 0),
-              reasoningTokens: Math.max(current.reasoningTokens, imp.reasoningTokens || 0),
-              totalTokens: Math.max(current.totalTokens, imp.totalTokens || 0),
+              observedTokens: Math.max(current.observedTokens, clampNum(imp.observedTokens)),
+              serverTokens: Math.max(current.serverTokens, clampNum(imp.serverTokens)),
+              estimatedTokens: Math.max(current.estimatedTokens, clampNum(imp.estimatedTokens)),
+              inputTokens: Math.max(current.inputTokens, clampNum(imp.inputTokens)),
+              outputTokens: Math.max(current.outputTokens, clampNum(imp.outputTokens)),
+              reasoningTokens: Math.max(current.reasoningTokens, clampNum(imp.reasoningTokens)),
+              cachedInputTokens: Math.max(current.cachedInputTokens, clampNum(imp.cachedInputTokens)),
+              totalTokens: Math.max(current.totalTokens, clampNum(imp.totalTokens)),
               seenEventIds: combinedSeen,
             }
             count++

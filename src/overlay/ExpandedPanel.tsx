@@ -179,20 +179,36 @@ export function ExpandedPanel() {
             <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)' }}>{state.activeModel}</div>
           </div>
         </div>
-        <button
-          onClick={() => store.setExpandedView(false)}
-          style={{
-            background: 'rgba(255,255,255,0.06)',
-            border: 'none',
-            borderRadius: 6,
-            color: 'rgba(255,255,255,0.6)',
-            cursor: 'pointer',
-            padding: '4px 8px',
-            fontSize: 10,
-          }}
-        >
-          ✕
-        </button>
+          <button
+            onClick={() => store.toggleProviderEnabled(state.id)}
+            style={{
+              padding: '3px 7px',
+              borderRadius: 4,
+              border: state.enabled ? '0.5px solid rgba(16,185,129,0.35)' : '0.5px solid rgba(239,68,68,0.35)',
+              background: state.enabled ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+              color: state.enabled ? '#34d399' : '#f87171',
+              fontSize: 9,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            {state.enabled ? 'Active' : 'Paused'}
+          </button>
+          <button
+            onClick={() => store.setExpandedView(false)}
+            style={{
+              background: 'rgba(255,255,255,0.06)',
+              border: 'none',
+              borderRadius: 6,
+              color: 'rgba(255,255,255,0.6)',
+              cursor: 'pointer',
+              padding: '4px 8px',
+              fontSize: 10,
+            }}
+          >
+            ✕
+          </button>
+        </div>
       </div>
 
       {/* Provider Selector Tabs */}
