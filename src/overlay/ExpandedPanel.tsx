@@ -1,15 +1,24 @@
 /**
  * src/overlay/ExpandedPanel.tsx
+ *
+ * Expanded HUD Dashboard.
+ * Presents four distinct observability cards:
+ * 1. Observed Tokens (Server Exact vs Local Estimate breakdown)
+ * 2. Context Window Load (Conversation tokens vs Model context limit)
+ * 3. Plan & Quota Status (Dynamic compute/message allowance + countdown)
+ * 4. Coverage Scope & Local Backup (Local profile banner + JSON export/import)
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   useTraceStore,
   PROVIDER_IDENTITY,
-  getSessionPercent,
-  getWeeklyPercent,
-  getRemaining,
-  getProviderHealth,
+  getContextPercent,
+  getObservedTokens,
+  getQuotaDisplay,
+  getHealthState,
+  exportDataAsJSON,
+  exportDataAsCSV,
   type ProviderId,
   type ThemeName,
   type SubscriptionTier,
@@ -35,9 +44,13 @@ const TIERS: { id: SubscriptionTier; label: string; icon: string }[] = [
   { id: 'enterprise', label: 'Enterprise', icon: '🏛️' },
 ]
 
-function useCountdown(resetAt: number): string {
-  const [text, setText] = useState(() => formatResetTime(resetAt))
+function useCountdown(resetAt?: number): string {
+  const [text, setText] = useState(() => (resetAt ? formatResetTime(resetAt) : 'dynamic'))
   useEffect(() => {
+    if (!resetAt) {
+      setText('dynamic')
+      return
+    }
     const update = () => setText(formatResetTime(resetAt))
     update()
     const iv = setInterval(update, 1000)
@@ -46,28 +59,8 @@ function useCountdown(resetAt: number): string {
   return text
 }
 
-function CacheCountdown({ expiresAt }: { expiresAt: number }) {
-  const [rem, setRem] = useState('')
-  useEffect(() => {
-    const update = () => {
-      const diff = expiresAt - Date.now()
-      if (diff <= 0) {
-        setRem('Expired')
-      } else {
-        const m = Math.floor(diff / 60000)
-        const s = Math.floor((diff % 60000) / 1000)
-        setRem(`${m}m ${s < 10 ? '0' : ''}${s}s`)
-      }
-    }
-    update()
-    const iv = setInterval(update, 1000)
-    return () => clearInterval(iv)
-  }, [expiresAt])
-  return <span>{rem}</span>
-}
-
-function SparklineChart({ history, color, width = 310, height = 110 }: {
-  history: { sessionPercent: number }[]; color: string; width?: number; height?: number
+function SparklineChart({ history, color, width = 310, height = 90 }: {
+  history: { observedTokens: number }[]; color: string; width?: number; height?: number
 }) {
   if (history.length === 0) {
     return (
@@ -76,20 +69,20 @@ function SparklineChart({ history, color, width = 310, height = 110 }: {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: 'rgba(255,255,255,0.01)',
         borderRadius: 10,
-        border: '0.5px dashed rgba(255,255,255,0.08)'
+        border: '0.5px dashed rgba(255,255,255,0.08)',
       }}>
-        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.2)' }}>Waiting for usage data points...</span>
+        <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>No observed requests yet</span>
       </div>
     )
   }
 
   const data = history.length === 1 ? [history[0], history[0]] : history
-  const maxVal = 100
+  const maxVal = Math.max(1, ...data.map(d => d.observedTokens))
   const pointsCount = data.length
 
   const coords = data.map((pt, i) => {
     const x = (i / (pointsCount - 1)) * width
-    const y = height - (pt.sessionPercent / maxVal) * height * 0.82 - 8
+    const y = height - (pt.observedTokens / maxVal) * height * 0.75 - 10
     return { x, y }
   })
 
@@ -100,279 +93,289 @@ function SparklineChart({ history, color, width = 310, height = 110 }: {
     <svg width={width} height={height} style={{ overflow: 'visible' }}>
       <defs>
         <linearGradient id={`gradient-${color}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
           <stop offset="100%" stopColor={color} stopOpacity="0.00" />
         </linearGradient>
       </defs>
-
-      <line x1="0" y1={height * 0.25} x2={width} y2={height * 0.25} stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
-      <line x1="0" y1={height * 0.5} x2={width} y2={height * 0.5} stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
-      <line x1="0" y1={height * 0.75} x2={width} y2={height * 0.75} stroke="rgba(255,255,255,0.03)" strokeWidth="0.5" />
-
       <path d={areaPath} fill={`url(#gradient-${color})`} />
       <path d={linePath} fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-
       {coords.length > 0 && (
-        <circle cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} r="3" fill={color} stroke="#0d0f14" strokeWidth="1.2" />
+        <circle cx={coords[coords.length - 1].x} cy={coords[coords.length - 1].y} r="3.5" fill={color} stroke="#0d0f14" strokeWidth="1.5" />
       )}
     </svg>
   )
 }
 
 export function ExpandedPanel() {
-  const providers = useTraceStore(s => s.providers)
-  const expandedProvider = useTraceStore(s => s.expandedProvider)
-  const activeProvider = useTraceStore(s => s.activeProvider)
-  const setExpandedView = useTraceStore(s => s.setExpandedView)
-  const currentTheme = useTraceStore(s => s.currentTheme)
-  const setTheme = useTraceStore(s => s.setTheme)
+  const store = useTraceStore()
+  const activeId = store.expandedProvider || store.activeProvider || 'chatgpt'
+  const state = store.providers[activeId] || store.providers.chatgpt
+  const { name, color } = PROVIDER_IDENTITY[state.id]
 
-  const [selectedId, setSelectedId] = useState<ProviderId>(() => expandedProvider || activeProvider || 'chatgpt')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [importStatus, setImportStatus] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (expandedProvider && expandedProvider !== selectedId) {
-      setSelectedId(expandedProvider)
-    } else if (!expandedProvider && activeProvider && activeProvider !== selectedId) {
-      setSelectedId(activeProvider)
+  const observedTokens = getObservedTokens(state)
+  const contextPct = getContextPercent(state)
+  const health = getHealthState(state.contextTokens || 0, state.contextLimit || 128_000)
+  const quota = getQuotaDisplay(state)
+  const countdown = useCountdown(quota.resetAt)
+
+  const isServerExact = state.lastRecord?.source === 'server' && state.lastRecord?.confidence === 'exact'
+
+  const handleExport = (format: 'json' | 'csv') => {
+    const content = format === 'json' ? exportDataAsJSON(store.providers) : exportDataAsCSV(store.providers)
+    const mime = format === 'json' ? 'application/json' : 'text/csv'
+    const blob = new Blob([content], { type: mime })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `trace-backup-${new Date().toISOString().slice(0, 10)}.${format}`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      const content = event.target?.result as string
+      const res = store.importDataFromJSON(content)
+      if (res.success) {
+        setImportStatus(`Imported ${res.importedCount} providers!`)
+      } else {
+        setImportStatus(`Import failed: ${res.error}`)
+      }
+      setTimeout(() => setImportStatus(null), 4000)
     }
-  }, [expandedProvider, activeProvider])
-
-  const activeState = providers[selectedId] ?? providers.chatgpt
-  const meta = PROVIDER_IDENTITY[selectedId] ?? PROVIDER_IDENTITY.chatgpt
-
-  const sessionPct = getSessionPercent(activeState)
-  const weeklyPct = getWeeklyPercent(activeState)
-  const remainingSession = getRemaining(activeState, 'session')
-  const remainingWeekly = getRemaining(activeState, 'weekly')
-  const health = getProviderHealth(activeState)
-  const countdown = useCountdown(activeState.sessionUsage.resetAt)
-
-  const totalTokensCombined = PANEL_PROVIDERS.reduce((sum, id) => sum + providers[id].totalTokens, 0)
+    reader.readAsText(file)
+  }
 
   return (
     <div style={{
-      width: 560,
+      width: 350,
       background: 'var(--trace-bg-gradient, #0d0f14)',
       border: '0.5px solid var(--trace-border-muted, rgba(255,255,255,0.12))',
       borderRadius: 'var(--trace-panel-radius, 16px)',
       backdropFilter: 'var(--trace-panel-blur, blur(20px))',
       WebkitBackdropFilter: 'var(--trace-panel-blur, blur(20px))',
-      boxShadow: 'var(--trace-panel-shadow, 0 8px 32px rgba(0,0,0,0.5))',
+      boxShadow: 'var(--trace-panel-shadow, 0 12px 48px rgba(0,0,0,0.65))',
+      fontFamily: "'Inter', system-ui, sans-serif",
+      color: '#ffffff',
       overflow: 'hidden',
-      fontFamily: 'Inter, system-ui, sans-serif',
-      display: 'flex',
-      animation: 'trace-slide-up 0.2s ease-out',
+      animation: 'trace-slide-up 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
     }}>
-      {/* Left Sidebar */}
+      {/* Header */}
       <div style={{
-        width: 210,
-        borderRight: '0.5px solid rgba(255,255,255,0.05)',
-        display: 'flex',
-        flexDirection: 'column',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 16px',
+        borderBottom: '0.5px solid rgba(255,255,255,0.06)',
       }}>
-        <div style={{
-          padding: '12px 14px',
-          borderBottom: '0.5px solid rgba(255,255,255,0.05)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.3)', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
-            Providers
-          </span>
-          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>{formatTokens(totalTokensCombined)} combined</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ProviderLogo provider={state.id} size={24} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{name}</div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)' }}>{state.activeModel}</div>
+          </div>
         </div>
-
-        <div style={{ padding: '8px 4px', display: 'flex', flexDirection: 'column', gap: 2, flex: 1 }}>
-          {PANEL_PROVIDERS.map(id => {
-            const state = providers[id]
-            const pm = PROVIDER_IDENTITY[id]
-            const active = selectedId === id
-            const pct = getSessionPercent(state)
-
-            return (
-              <div
-                key={id}
-                onClick={() => {
-                  setSelectedId(id)
-                  useTraceStore.getState().setActiveProvider(id)
-                }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '8px 10px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  background: active ? 'rgba(255,255,255,0.05)' : 'transparent',
-                  transition: 'background 0.15s, transform 0.1s',
-                }}
-                onMouseEnter={e => !active && (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
-                onMouseLeave={e => !active && (e.currentTarget.style.background = 'transparent')}
-              >
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <ProviderLogo provider={id} size={18} />
-                  {state.isActive && (
-                    <div style={{
-                      position: 'absolute', bottom: -2, right: -2,
-                      width: 6, height: 6, borderRadius: '50%',
-                      background: '#10b981', border: '1px solid #0d0f14',
-                      boxShadow: '0 0 4px #10b981',
-                    }} />
-                  )}
-                </div>
-                
-                <span style={{
-                  fontSize: 12,
-                  fontWeight: active ? 500 : 400,
-                  color: active ? '#ffffff' : 'rgba(255,255,255,0.5)',
-                  flex: 1,
-                }}>
-                  {pm.name}
-                </span>
-
-                <span style={{
-                  fontSize: 10,
-                  fontWeight: 500,
-                  color: pct >= 80 ? '#f87171' : 'rgba(255,255,255,0.3)',
-                  fontVariantNumeric: 'tabular-nums',
-                }}>
-                  {pct > 0 ? `${pct}%` : '0%'}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Settings Footer: Theme & Plan Tier (Per Provider) */}
-        <div style={{
-          padding: '10px 14px',
-          borderTop: '0.5px solid rgba(255,255,255,0.05)',
-          background: 'rgba(0,0,0,0.1)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 10,
-        }}>
-          <CustomDropdown
-            label={`${meta.name} Plan Tier`}
-            value={activeState.tier || 'pro'}
-            options={TIERS}
-            direction="up"
-            onChange={val => useTraceStore.getState().setProviderTier(selectedId, val as SubscriptionTier)}
-          />
-          <CustomDropdown
-            label="Theme"
-            value={currentTheme}
-            options={THEMES}
-            direction="up"
-            onChange={val => setTheme(val as ThemeName)}
-          />
-        </div>
+        <button
+          onClick={() => store.setExpandedView(false)}
+          style={{
+            background: 'rgba(255,255,255,0.06)',
+            border: 'none',
+            borderRadius: 6,
+            color: 'rgba(255,255,255,0.6)',
+            cursor: 'pointer',
+            padding: '4px 8px',
+            fontSize: 10,
+          }}
+        >
+          ✕
+        </button>
       </div>
 
-      {/* Right Details Panel */}
+      {/* Provider Selector Tabs */}
       <div style={{
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4,
+        padding: '8px 16px',
+        background: 'rgba(0,0,0,0.2)',
       }}>
-        {/* Header */}
-        <div style={{
-          padding: '12px 16px',
-          borderBottom: '0.5px solid rgba(255,255,255,0.05)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <ProviderLogo provider={selectedId} size={22} />
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
-                {meta.name} Detailed Usage
-              </div>
-              <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>
-                Model: <span style={{ color: meta.color }}>{activeState.activeModel}</span> · Tier: <span style={{ textTransform: 'uppercase' }}>{activeState.tier}</span>
-              </div>
-            </div>
-          </div>
-          <span
-            onClick={() => setExpandedView(false)}
+        {PANEL_PROVIDERS.map(pId => (
+          <button
+            key={pId}
+            onClick={() => store.setExpandedView(true, pId)}
             style={{
+              padding: '5px 0',
+              borderRadius: 6,
+              border: pId === activeId ? '0.5px solid rgba(255,255,255,0.25)' : '0.5px solid transparent',
+              background: pId === activeId ? 'rgba(255,255,255,0.1)' : 'transparent',
+              color: pId === activeId ? '#ffffff' : 'rgba(255,255,255,0.4)',
               fontSize: 10,
-              padding: '2px 7px',
-              borderRadius: 10,
-              background: 'rgba(255,255,255,0.06)',
-              color: 'rgba(255,255,255,0.5)',
-              border: '0.5px solid rgba(255,255,255,0.08)',
+              fontWeight: 500,
               cursor: 'pointer',
-              transition: 'background 0.15s',
             }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.12)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.06)')}
           >
-            ← back
-          </span>
-        </div>
+            {PROVIDER_IDENTITY[pId].name}
+          </button>
+        ))}
+      </div>
 
-        {/* Stats Grid */}
+      <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* Card 1: Observed Activity */}
         <div style={{
-          padding: '14px 16px 10px',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 12,
+          background: 'rgba(255,255,255,0.03)',
+          border: '0.5px solid rgba(255,255,255,0.06)',
+          borderRadius: 10,
+          padding: '10px 12px',
         }}>
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 10, border: '0.5px solid rgba(255,255,255,0.04)' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginBottom: 4 }}>Total Tokens</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#ffffff' }}>{formatTokens(activeState.totalTokens)}</div>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.15)', marginTop: 2 }}>in: {formatTokens(activeState.inputTokens)} · out: {formatTokens(activeState.outputTokens)}</div>
-          </div>
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 10, border: '0.5px solid rgba(255,255,255,0.04)' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginBottom: 4 }}>Session Usage</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: health === 'over_limit' ? '#f87171' : '#ffffff' }}>
-              {sessionPct}%
-            </div>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.15)', marginTop: 2 }}>{formatTokens(remainingSession)} remaining</div>
-          </div>
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 12px', borderRadius: 10, border: '0.5px solid rgba(255,255,255,0.04)' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginBottom: 4 }}>Context & Cache</div>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#ffffff' }}>
-              {formatTokens(activeState.contextTokens)} / {formatTokens(activeState.contextLimit)}
-            </div>
-            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.25)', marginTop: 2 }}>
-              Cache: {activeState.cacheExpiresAt > Date.now() ? <CacheCountdown expiresAt={activeState.cacheExpiresAt} /> : 'Inactive'}
-            </div>
-          </div>
-        </div>
-
-        {/* Chart area */}
-        <div style={{
-          padding: '10px 16px 16px',
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-            <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Usage History (50m window)
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Observed Activity
             </span>
-            <span style={{ fontSize: 9, color: meta.color, fontWeight: 500 }}>
-              Session Limit: {formatTokens(activeState.sessionUsage.total)}
+            <span style={{
+              fontSize: 8,
+              padding: '1px 5px',
+              borderRadius: 4,
+              background: isServerExact ? 'rgba(16,185,129,0.15)' : 'rgba(59,130,246,0.15)',
+              color: isServerExact ? '#34d399' : '#60a5fa',
+              border: isServerExact ? '0.5px solid rgba(16,185,129,0.3)' : '0.5px solid rgba(59,130,246,0.3)',
+            }}>
+              {isServerExact ? 'Server reported' : 'Local estimate'}
             </span>
           </div>
 
-          <div style={{
-            flex: 1,
-            background: 'rgba(0,0,0,0.15)',
-            border: '0.5px solid rgba(255,255,255,0.04)',
-            borderRadius: 12,
-            padding: '12px 10px 8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-          }}>
-            <SparklineChart history={activeState.history} color={meta.color} />
+          <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.5px', marginBottom: 6 }}>
+            {formatTokens(observedTokens)} <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.4)' }}>tokens</span>
           </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>
+            <div>Input: <strong style={{ color: '#fff' }}>{formatTokens(state.inputTokens)}</strong></div>
+            <div>Output: <strong style={{ color: '#fff' }}>{formatTokens(state.outputTokens)}</strong></div>
+            <div>Reasoning: <strong style={{ color: '#fff' }}>{formatTokens(state.reasoningTokens)}</strong></div>
+            <div>Cached: <strong style={{ color: '#fff' }}>{formatTokens(state.cachedInputTokens)}</strong></div>
+          </div>
+
+          <div style={{ marginTop: 8 }}>
+            <SparklineChart history={state.history} color={color} width={300} height={45} />
+          </div>
+        </div>
+
+        {/* Card 2: Context Window Load */}
+        <div style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '0.5px solid rgba(255,255,255,0.06)',
+          borderRadius: 10,
+          padding: '10px 12px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Conversation Context
+            </span>
+            <span style={{ fontSize: 9, color: health === 'over_limit' ? '#f87171' : '#34d399', fontWeight: 500 }}>
+              {contextPct}% capacity
+            </span>
+          </div>
+
+          <div style={{ height: 4, background: 'rgba(255,255,255,0.08)', borderRadius: 2, overflow: 'hidden', margin: '6px 0' }}>
+            <div style={{
+              height: '100%',
+              width: `${Math.max(contextPct, 1)}%`,
+              background: health === 'over_limit' ? '#f87171' : color,
+              transition: 'width 0.4s',
+            }} />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>
+            <span>Current: {formatTokens(state.contextTokens || 0)}</span>
+            <span>Model Limit: {formatTokens(state.contextLimit || 128_000)}</span>
+          </div>
+        </div>
+
+        {/* Card 3: Detected Limit & Plan Policy */}
+        <div style={{
+          background: 'rgba(255,255,255,0.03)',
+          border: '0.5px solid rgba(255,255,255,0.06)',
+          borderRadius: 10,
+          padding: '10px 12px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Quota & Allowance
+            </span>
+            <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.5)' }}>
+              Reset in {countdown}
+            </span>
+          </div>
+
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.85)', margin: '4px 0' }}>
+            {quota.description}
+          </div>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', lineHeight: 1.3 }}>
+            Provider allowance is compute/message managed. Account quota ceilings are not exposed by the provider.
+          </div>
+        </div>
+
+        {/* Customization Settings */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <CustomDropdown
+            label="Theme"
+            value={store.currentTheme}
+            options={THEMES}
+            onChange={v => store.setTheme(v as ThemeName)}
+          />
+          <CustomDropdown
+            label="Plan Tier"
+            value={state.tier}
+            options={TIERS}
+            onChange={v => store.setProviderTier(state.id, v as SubscriptionTier)}
+          />
+        </div>
+
+        {/* Card 4: Coverage & Local Backup */}
+        <div style={{
+          padding: '8px 10px',
+          background: 'rgba(0,0,0,0.3)',
+          borderRadius: 8,
+          border: '0.5px solid rgba(255,255,255,0.05)',
+        }}>
+          <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginBottom: 6 }}>
+            Scope: <strong>This browser profile only</strong> (zero telemetry).
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => handleExport('json')}
+              style={{
+                flex: 1, padding: '4px 0', fontSize: 9, borderRadius: 4,
+                background: 'rgba(255,255,255,0.08)', color: '#fff', border: '0.5px solid rgba(255,255,255,0.15)',
+                cursor: 'pointer',
+              }}
+            >
+              Export JSON
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                flex: 1, padding: '4px 0', fontSize: 9, borderRadius: 4,
+                background: 'rgba(255,255,255,0.08)', color: '#fff', border: '0.5px solid rgba(255,255,255,0.15)',
+                cursor: 'pointer',
+              }}
+            >
+              Import JSON
+            </button>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".json"
+              style={{ display: 'none' }}
+            />
+          </div>
+          {importStatus && (
+            <div style={{ fontSize: 8, color: '#34d399', marginTop: 4, textAlign: 'center' }}>
+              {importStatus}
+            </div>
+          )}
         </div>
       </div>
     </div>

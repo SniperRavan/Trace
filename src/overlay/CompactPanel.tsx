@@ -1,13 +1,17 @@
 /**
  * src/overlay/CompactPanel.tsx
+ *
+ * Compact floating overlay panel.
+ * Displays observed tokens, context load, and honest provider-controlled quota status.
  */
 
 import { useState, useEffect } from 'react'
 import {
   useTraceStore,
   PROVIDER_IDENTITY,
-  getSessionPercent,
-  getWeeklyPercent,
+  getContextPercent,
+  getObservedTokens,
+  getQuotaDisplay,
   type ProviderId,
 } from '@/storage/store'
 import { formatTokens, formatResetTime } from '@/tracking/estimator'
@@ -15,9 +19,13 @@ import { ProviderLogo } from '@/components/ui/ProviderLogo'
 
 const PANEL_PROVIDERS: ProviderId[] = ['chatgpt', 'claude', 'gemini']
 
-function useCountdown(resetAt: number): string {
-  const [text, setText] = useState(() => formatResetTime(resetAt))
+function useCountdown(resetAt?: number): string {
+  const [text, setText] = useState(() => (resetAt ? formatResetTime(resetAt) : 'dynamic'))
   useEffect(() => {
+    if (!resetAt) {
+      setText('dynamic')
+      return
+    }
     const update = () => setText(formatResetTime(resetAt))
     update()
     const iv = setInterval(update, 1000)
@@ -28,8 +36,8 @@ function useCountdown(resetAt: number): string {
 
 function PanelHeader() {
   const currentTier = useTraceStore(s => s.currentTier)
-  const total = useTraceStore(s =>
-    PANEL_PROVIDERS.reduce((sum, id) => sum + s.providers[id].totalTokens, 0)
+  const totalObserved = useTraceStore(s =>
+    PANEL_PROVIDERS.reduce((sum, id) => sum + getObservedTokens(s.providers[id]), 0)
   )
   return (
     <div style={{
@@ -38,7 +46,7 @@ function PanelHeader() {
       borderBottom: '0.5px solid rgba(255,255,255,0.05)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.35)', letterSpacing: '0.7px', textTransform: 'uppercase' }}>
+        <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.45)', letterSpacing: '0.7px', textTransform: 'uppercase' }}>
           Trace
         </span>
         <span style={{ fontSize: 9, padding: '1px 5px', borderRadius: 4, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase' }}>
@@ -47,7 +55,7 @@ function PanelHeader() {
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#10b981', animation: 'trace-breathe 2s ease-in-out infinite' }} />
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>{formatTokens(total)} today</span>
+        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>{formatTokens(totalObserved)} observed</span>
       </div>
     </div>
   )
@@ -56,13 +64,13 @@ function PanelHeader() {
 function ProviderRow({ id }: { id: ProviderId }) {
   const state = useTraceStore(s => s.providers[id])
   const { name, color } = PROVIDER_IDENTITY[id]
-  const sessionPct = getSessionPercent(state)
-  const weeklyPct = getWeeklyPercent(state)
+  const contextPct = getContextPercent(state)
+  const observedTokens = getObservedTokens(state)
+  const quota = getQuotaDisplay(state)
+  const countdown = useCountdown(quota.resetAt)
 
-  const sessionBarColor = sessionPct >= 80 ? 'rgba(248,113,113,0.9)' : color
-  const weeklyBarColor = weeklyPct >= 80 ? 'rgba(239,68,68,0.9)' : 'rgba(99,102,241,0.85)'
-  const countdown = useCountdown(state.sessionUsage.resetAt)
-  const weeklyCountdown = useCountdown(state.weeklyUsage.resetAt)
+  const isServerExact = state.lastRecord?.source === 'server' && state.lastRecord?.confidence === 'exact'
+  const barColor = contextPct >= 80 ? 'rgba(248,113,113,0.9)' : color
 
   return (
     <div
@@ -77,33 +85,27 @@ function ProviderRow({ id }: { id: ProviderId }) {
           <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
             {state.activeModel}
           </span>
+          {isServerExact && (
+            <span style={{ fontSize: 7, padding: '1px 3px', borderRadius: 2, background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>
+              exact
+            </span>
+          )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, color: 'rgba(255,255,255,0.3)', fontVariantNumeric: 'tabular-nums' }}>
-          <span>S: <strong style={{ color: sessionPct >= 80 ? '#f87171' : '#ffffff' }}>{sessionPct}%</strong></span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, color: 'rgba(255,255,255,0.4)', fontVariantNumeric: 'tabular-nums' }}>
+          <span>{formatTokens(observedTokens)} tok</span>
           <span>·</span>
-          <span>W: <strong style={{ color: weeklyPct >= 80 ? '#f87171' : 'rgba(129,140,248,0.9)' }}>{weeklyPct}%</strong></span>
+          <span>Ctx: <strong style={{ color: contextPct >= 80 ? '#f87171' : '#ffffff' }}>{contextPct}%</strong></span>
         </div>
       </div>
 
-      {/* Dual Progress Bars: Session & Weekly */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 2 }}>
-        <div>
-          <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${Math.max(sessionPct, 1)}%`, borderRadius: 3, background: sessionBarColor, transition: 'width 0.6s' }} />
-          </div>
-          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.2)', marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
-            <span>Session</span>
-            <span>{countdown}</span>
-          </div>
+      {/* Context Window Load Bar */}
+      <div style={{ marginTop: 2 }}>
+        <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${Math.max(contextPct, 1)}%`, borderRadius: 3, background: barColor, transition: 'width 0.6s' }} />
         </div>
-        <div>
-          <div style={{ height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${Math.max(weeklyPct, 1)}%`, borderRadius: 3, background: weeklyBarColor, transition: 'width 0.6s' }} />
-          </div>
-          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.2)', marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
-            <span>Weekly</span>
-            <span>{weeklyCountdown}</span>
-          </div>
+        <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.3)', marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
+          <span>{quota.description}</span>
+          <span>{countdown}</span>
         </div>
       </div>
     </div>
@@ -114,7 +116,7 @@ export function CompactPanel() {
   const setExpandedView = useTraceStore(s => s.setExpandedView)
   return (
     <div style={{
-      width: 270,
+      width: 275,
       background: 'var(--trace-bg-gradient, #0d0f14)',
       border: '0.5px solid var(--trace-border-muted, rgba(255,255,255,0.12))',
       borderRadius: 'var(--trace-panel-radius, 16px)',
@@ -134,7 +136,7 @@ export function CompactPanel() {
         borderTop: '0.5px solid rgba(255,255,255,0.12)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.4)' }}>local-only · privacy first</span>
+        <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>profile-bound · zero telemetry</span>
         <span
           onClick={() => setExpandedView(true, useTraceStore.getState().activeProvider)}
           style={{
