@@ -42,5 +42,22 @@
 
 ## Current Status
 
-The extension compiles cleanly and passes all unit and integration tests.
-Loaded as an unpacked extension, Trace delivers a tamper-resistant, privacy-first observability layer with zero cloud telemetry.
+**Status: Release Candidate — Controlled Beta Ready**
+
+### Automated verification:
+- Type checking: passed
+- Unit and verification tests: 23 passed
+- Production build: passed
+- CI pipeline: configured
+
+### Scope:
+- Tracks activity observed in the current browser profile
+- Uses server-reported usage when available
+- Uses labeled estimates when native usage is unavailable
+- Does not claim universal provider quota visibility
+- Does not include mobile apps or unrelated browser profiles
+
+### Remaining risk:
+- Provider web-protocol changes may affect live adapters
+- Consumer-provider quota semantics remain provider-controlled
+- Manual browser-matrix validation is required before broad publication

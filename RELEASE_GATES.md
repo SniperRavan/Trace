@@ -18,9 +18,9 @@ Before releasing Trace to users or publishing to the **Chrome Web Store** and **
 | :--- | :--- | :--- | :--- |
 | **Gate 1** | **CI & Automated Quality Checks** | GitHub Actions (`.github/workflows/ci.yml`) runs `type-check`, `npm test`, and `npm run build` on every push/PR. | Automated CI |
 | **Gate 2** | **Dual Manifest Validation** | `public/manifest.json` includes valid Chrome MV3 service worker and Firefox `browser_specific_settings` (`gecko.id`). | Verified for MV3 |
-| **Gate 3** | **Zero-Knowledge Data Audit** | Verified that raw prompts (`userText`), responses (`assistantText`), cookies, auth headers, and account emails are never written to `chrome.storage.local`. | Audit Passed |
+| **Gate 3** | **Local-Only Privacy Audit** | Verified that raw prompts (`userText`), responses (`assistantText`), cookies, auth headers, and account emails are never written to `chrome.storage.local`. | Audit Passed |
 | **Gate 4** | **Source & Confidence Labels** | Every UI metric explicitly displays its source (`server`, `tokenizer`, `heuristic`) and confidence level (`exact`, `estimated`, `unknown`). | Verified in UI |
-| **Gate 5** | **Graceful Degradation Matrix** | Unknown models and unhandled RPC formats degrade safely to `estimated` / `unknown` without throwing unhandled exceptions. | Error boundaries tested |
+| **Gate 5** | **Graceful Degradation & Health** | Unknown models degrade safely to `estimated`. Local adapter health telemetry flags protocol drift (`needs_review`) without remote telemetry. | Error boundaries tested |
 | **Gate 6** | **Independent Feature Flags** | Users can independently toggle tracking on/off for ChatGPT, Claude, and Gemini in the Expanded Panel and Popup without disabling the whole extension. | `toggleProviderEnabled` verified |
 | **Gate 7** | **Guarded Import & Size Caps** | JSON import enforces a strict 2MB file size cap, validates schema version (`v2.0`), clamps numeric bounds, and deduplicates `seenEventIds`. | Verified in `store.spec.ts` |
 | **Gate 8** | **Storage Schema Migration** | `migrateStorage()` runner safely upgrades older `v1.x` local stores to `v2.0` with backwards compatibility. | Verified in `store.spec.ts` |
@@ -29,7 +29,9 @@ Before releasing Trace to users or publishing to the **Chrome Web Store** and **
 
 ---
 
-## 3. Zero-Knowledge Privacy Audit Checklist
+## 3. Local-Only Privacy Audit Checklist
+
+> **Local-only privacy guarantee:** No raw prompts, responses, credentials, or account identifiers are persisted or transmitted.
 
 ```text
 [✓] No user message prompts saved to storage
@@ -39,6 +41,7 @@ Before releasing Trace to users or publishing to the **Chrome Web Store** and **
 [✓] Prompts immediately redacted from memory post-tokenization
 [✓] Event IDs generated via one-way deterministic hashing
 [✓] Zero external telemetry or analytics servers pinged
+[✓] Local adapter health diagnostics stored 100% in-browser
 ```
 
 ---
