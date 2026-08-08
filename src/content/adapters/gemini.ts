@@ -1,5 +1,13 @@
+/**
+ * src/content/adapters/gemini.ts
+ *
+ * Gemini provider adapter.
+ * Uses exact usageMetadata extracted from Google RPC payloads when available,
+ * and SentencePiece-calibrated heuristics with reasoning/thinking support otherwise.
+ */
+
 import { useTraceStore } from '@/storage/store'
-import { countTokens } from '@/tracking/estimator'
+import { buildUsageRecord } from '@/tracking/estimator'
 import { type ProviderAdapter, listenForTraceEvents } from './index'
 
 export class GeminiAdapter implements ProviderAdapter {
@@ -12,30 +20,32 @@ export class GeminiAdapter implements ProviderAdapter {
     const cleanupListener = listenForTraceEvents('gemini', (detail) => {
       if (detail.planType) {
         useTraceStore.getState().setProviderTier('gemini', detail.planType)
-        console.log('[Trace] GeminiAdapter auto-detected plan tier:', detail.planType)
       }
 
       if (detail.modelName) {
         useTraceStore.getState().setActiveModel('gemini', detail.modelName, detail.contextLimit)
       }
 
-      let inputTokens = detail.inputTokens ?? 0
-      let outputTokens = detail.outputTokens ?? 0
+      const record = buildUsageRecord({
+        provider: 'gemini',
+        model: detail.modelName,
+        plan: detail.planType,
+        inputTokens: detail.inputTokens,
+        outputTokens: detail.outputTokens,
+        reasoningTokens: detail.reasoningTokens,
+        cachedInputTokens: detail.cachedInputTokens,
+        userText: detail.userText,
+        assistantText: detail.assistantText,
+        source: detail.source,
+        confidence: detail.confidence,
+      })
 
-      if (!inputTokens && !outputTokens) {
-        if (detail.userText) inputTokens = countTokens(detail.userText)
-        if (detail.assistantText) outputTokens = countTokens(detail.assistantText)
+      if (record.totalTokens && record.totalTokens > 0) {
+        useTraceStore.getState().recordUsage(record, detail.eventId)
       }
-
-      const totalTokens = detail.totalTokens || inputTokens + outputTokens
-      if (totalTokens <= 0) return
-
-      useTraceStore.getState().addTokens('gemini', totalTokens, inputTokens, outputTokens)
-      console.log('[Trace] GeminiAdapter +', totalTokens, 'tokens (in:', inputTokens, 'out:', outputTokens, ')')
     })
 
     this.cleanupFns.push(cleanupListener)
-    console.log('[Trace] GeminiAdapter started with persistent local plan auto-detection')
   }
 
   private startPlanDetector() {
@@ -45,8 +55,7 @@ export class GeminiAdapter implements ProviderAdapter {
       try {
         const lowerText = (document.body?.innerText || '').toLowerCase()
         const advIcon = document.querySelector('mat-icon[fonticon="gemini_spark_sparkles_advanced"]') || document.querySelector('[aria-label*="Advanced"]')
-        
-        // Model auto-detection from DOM dropdown / text
+
         if (lowerText.includes('3.5 flash-lite') || lowerText.includes('flash-lite')) {
           useTraceStore.getState().setActiveModel('gemini', '3.5 Flash-Lite', 1000000)
         } else if (lowerText.includes('3.1 pro') || lowerText.includes('gemini 3.1')) {
@@ -60,7 +69,7 @@ export class GeminiAdapter implements ProviderAdapter {
         if (lowerText.includes('gemini advanced') || advIcon) {
           useTraceStore.getState().setProviderTier('gemini', 'pro')
           clearInterval(interval)
-        } else if (lowerText.includes('try gemini advanced') || lowerText.includes('upgrade to gemini advanced') || lowerText.includes('try advanced') || lowerText.includes('free plan')) {
+        } else if (lowerText.includes('try gemini advanced') || lowerText.includes('upgrade to gemini advanced') || lowerText.includes('try advanced')) {
           useTraceStore.getState().setProviderTier('gemini', 'free')
           clearInterval(interval)
         }

@@ -1,9 +1,13 @@
 /**
  * src/content/adapters/chatgpt.ts
+ *
+ * ChatGPT provider adapter.
+ * Uses exact token metrics when reported, BPE tokenizer for OpenAI models,
+ * and tracks multi-token fields (input, output, reasoning).
  */
 
 import { useTraceStore } from '@/storage/store'
-import { countTokens } from '@/tracking/estimator'
+import { buildUsageRecord } from '@/tracking/estimator'
 import { type ProviderAdapter, listenForTraceEvents } from './index'
 
 export class ChatGPTAdapter implements ProviderAdapter {
@@ -16,30 +20,32 @@ export class ChatGPTAdapter implements ProviderAdapter {
     const cleanupListener = listenForTraceEvents('chatgpt', (detail) => {
       if (detail.planType) {
         useTraceStore.getState().setProviderTier('chatgpt', detail.planType)
-        console.log('[Trace] ChatGPTAdapter auto-detected plan tier via API:', detail.planType)
       }
 
       if (detail.modelName) {
         useTraceStore.getState().setActiveModel('chatgpt', detail.modelName, detail.contextLimit)
       }
 
-      let input = detail.inputTokens ?? 0
-      let output = detail.outputTokens ?? 0
+      const record = buildUsageRecord({
+        provider: 'chatgpt',
+        model: detail.modelName,
+        plan: detail.planType,
+        inputTokens: detail.inputTokens,
+        outputTokens: detail.outputTokens,
+        reasoningTokens: detail.reasoningTokens,
+        cachedInputTokens: detail.cachedInputTokens,
+        userText: detail.userText,
+        assistantText: detail.assistantText,
+        source: detail.source,
+        confidence: detail.confidence,
+      })
 
-      if (!input && !output) {
-        if (detail.userText) input = countTokens(detail.userText)
-        if (detail.assistantText) output = countTokens(detail.assistantText)
+      if (record.totalTokens && record.totalTokens > 0) {
+        useTraceStore.getState().recordUsage(record, detail.eventId)
       }
-
-      const total = detail.totalTokens || input + output
-      if (total <= 0) return
-
-      useTraceStore.getState().addTokens('chatgpt', total, input, output)
-      console.log('[Trace] ChatGPTAdapter +', total, 'tokens (in:', input, 'out:', output, ')')
     })
 
     this.cleanupFns.push(cleanupListener)
-    console.log('[Trace] ChatGPTAdapter started with persistent local plan auto-detection')
   }
 
   private startPlanDetector() {
@@ -49,7 +55,7 @@ export class ChatGPTAdapter implements ProviderAdapter {
       try {
         const lowerText = (document.body?.innerText || '').toLowerCase()
         const profileText = (document.querySelector('[data-testid="user-profile-button"]')?.textContent || '').toLowerCase()
-        
+
         if (lowerText.includes('chatgpt plus') || profileText.includes('plus') || lowerText.includes('plus subscriber')) {
           useTraceStore.getState().setProviderTier('chatgpt', 'pro')
           clearInterval(interval)
