@@ -5,7 +5,7 @@
  * during live SSE streaming for Claude, ChatGPT, and Gemini.
  */
 
-import { countTokens } from './estimator'
+import { countTokensNumeric } from './estimator'
 import type { ProviderId } from '@/storage/store'
 
 interface CacheEntry {
@@ -45,8 +45,8 @@ export class TokenCache {
       return cached.tokens
     }
 
-    const tokens = countTokens(text, provider)
-    
+    const tokens = countTokensNumeric(text, provider)
+
     // Evict oldest if max size reached
     if (this.cache.size >= this.maxSize) {
       const firstKey = this.cache.keys().next().value
