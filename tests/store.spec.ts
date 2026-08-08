@@ -1,69 +1,116 @@
-import { describe, it, expect, vi } from 'vitest'
-import { useTraceStore, getSessionPercent, getWeeklyPercent } from '../src/storage/store'
+import { describe, it, expect } from 'vitest'
+import {
+  useTraceStore,
+  getObservedTokens,
+  getContextPercent,
+  getQuotaDisplay,
+  type UsageRecord,
+} from '../src/storage/store'
 
-describe('Trace Store', () => {
-  it('should initialize with default provider states', () => {
+describe('Trace Store & Observability Engine', () => {
+  it('should initialize with default provider states and PlanPolicies', () => {
     const state = useTraceStore.getState()
     expect(state.providers.chatgpt).toBeDefined()
-    expect(state.providers.chatgpt.sessionUsage.total).toBe(40000)
-    expect(state.providers.claude.sessionUsage.total).toBe(45000)
+    expect(state.providers.chatgpt.planPolicy.quotaKind).toBe('messages')
+    expect(state.providers.claude.planPolicy.quotaKind).toBe('compute')
+    expect(state.providers.gemini.planPolicy.quotaKind).toBe('compute')
   })
 
-  it('should add tokens and decrease remaining quota', () => {
+  it('should record usage and distinguish server exact vs local estimate', () => {
     const store = useTraceStore.getState()
-    store.addTokens('chatgpt', 1000, 400, 600)
-    
-    const updated = useTraceStore.getState().providers.chatgpt
-    expect(updated.totalTokens).toBe(1000)
-    expect(updated.sessionUsage.used).toBe(1000)
-    expect(updated.sessionUsage.remaining).toBe(39000)
+
+    // 1. Record an exact server record
+    const serverRecord: UsageRecord = {
+      provider: 'claude',
+      model: 'Claude 3.5 Sonnet',
+      inputTokens: 200,
+      outputTokens: 500,
+      cachedInputTokens: 100,
+      totalTokens: 700,
+      source: 'server',
+      confidence: 'exact',
+      observedAt: Date.now(),
+    }
+    store.recordUsage(serverRecord, 'event-101')
+
+    const claudeState = useTraceStore.getState().providers.claude
+    expect(claudeState.serverTokens).toBe(700)
+    expect(claudeState.observedTokens).toBe(700)
+    expect(claudeState.contextTokens).toBe(700)
+
+    const quota = getQuotaDisplay(claudeState)
+    expect(quota.isExact).toBe(true)
+    expect(quota.description).toContain('Server reported')
   })
 
-  it('should calculate correct usage percentages', () => {
-    const state = useTraceStore.getState().providers.chatgpt
-    // used = 1000, total = 40000 => 2.5%, rounded to 3%
-    expect(getSessionPercent(state)).toBe(3)
-  })
-
-  it('should clear limits when reset check expires', () => {
+  it('should deduplicate events with the same eventId (Idempotency)', () => {
     const store = useTraceStore.getState()
-    
-    // Artificially modify store memory to be expired and have usage
-    store.updateUsage('chatgpt', {
-      sessionUsage: {
-        used: 5000,
-        total: 40000,
-        remaining: 35000,
-        resetAt: Date.now() - 1000 // Expired 1s ago
-      }
+    const duplicateRecord: UsageRecord = {
+      provider: 'chatgpt',
+      model: 'GPT-4o',
+      inputTokens: 100,
+      outputTokens: 200,
+      totalTokens: 300,
+      source: 'tokenizer',
+      confidence: 'estimated',
+      observedAt: Date.now(),
+    }
+
+    const appliedFirst = store.recordUsage(duplicateRecord, 'event-dup-999')
+    expect(appliedFirst).toBe(true)
+
+    const tokensAfterFirst = useTraceStore.getState().providers.chatgpt.observedTokens
+
+    // Try replaying the exact same event
+    const appliedSecond = store.recordUsage(duplicateRecord, 'event-dup-999')
+    expect(appliedSecond).toBe(false)
+
+    // Token count should NOT increase
+    const tokensAfterSecond = useTraceStore.getState().providers.chatgpt.observedTokens
+    expect(tokensAfterSecond).toBe(tokensAfterFirst)
+  })
+
+  it('should reset context load when rolling window expires', () => {
+    const store = useTraceStore.getState()
+
+    // Simulate an expired session window on Gemini
+    store.setPlanPolicy('gemini', {
+      windows: [
+        { name: 'session', resetAt: Date.now() - 2000, isDynamic: true },
+        { name: 'weekly', resetAt: Date.now() + 50000, isDynamic: true },
+      ],
     })
+    store.updateUsage('gemini', { contextTokens: 45000 })
 
-    // Before check, session has 5000 used
-    expect(useTraceStore.getState().providers.chatgpt.sessionUsage.used).toBe(5000)
-    
-    // Trigger reset check
+    expect(useTraceStore.getState().providers.gemini.contextTokens).toBe(45000)
+
     store.checkResets()
 
-    // Session usage should be zeroed and resetAt should be pushed to the future
-    const reset = useTraceStore.getState().providers.chatgpt.sessionUsage
-    expect(reset.used).toBe(0)
-    expect(reset.resetAt).toBeGreaterThan(Date.now())
+    const geminiAfter = useTraceStore.getState().providers.gemini
+    expect(geminiAfter.contextTokens).toBe(0)
+    const newSessionWin = geminiAfter.planPolicy.windows.find(w => w.name === 'session')
+    expect(newSessionWin?.resetAt).toBeGreaterThan(Date.now())
   })
 
-  it('should set per-provider tier without mutating other providers', () => {
+  it('should export and import data with deduplication', () => {
     const store = useTraceStore.getState()
-    store.setProviderTier('claude', 'team')
+    store.recordUsage({
+      provider: 'gemini',
+      inputTokens: 500,
+      outputTokens: 500,
+      totalTokens: 1000,
+      source: 'server',
+      confidence: 'exact',
+      observedAt: Date.now(),
+    }, 'event-import-1')
 
-    expect(useTraceStore.getState().providers.claude.tier).toBe('team')
-    expect(useTraceStore.getState().providers.chatgpt.tier).toBe('pro')
-  })
+    const exportedJson = JSON.stringify({
+      version: '2.0',
+      providers: useTraceStore.getState().providers,
+    })
 
-  it('should update active model name and context limit', () => {
-    const store = useTraceStore.getState()
-    store.setActiveModel('gemini', 'Gemini 1.5 Pro', 2000000)
-
-    const geminiState = useTraceStore.getState().providers.gemini
-    expect(geminiState.activeModel).toBe('Gemini 1.5 Pro')
-    expect(geminiState.contextLimit).toBe(2000000)
+    const importResult = store.importDataFromJSON(exportedJson)
+    expect(importResult.success).toBe(true)
+    expect(importResult.importedCount).toBe(3)
   })
 })
