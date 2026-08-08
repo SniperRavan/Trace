@@ -179,6 +179,7 @@ export function ExpandedPanel() {
             <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)' }}>{state.activeModel}</div>
           </div>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button
             onClick={() => store.toggleProviderEnabled(state.id)}
             style={{
