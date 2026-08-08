@@ -4,7 +4,7 @@
 
 # ⚡ Trace
 
-**An ambient AI usage tracker that lives quietly in your browser.**
+**Privacy-first local AI usage observability with exact server metrics when available and clearly labeled estimates otherwise.**
 
 <p align="center">
   <img src="https://skillicons.dev/icons?i=ts,react,vite,tailwind,css,js,html,linux,git,github&theme=dark&perline=10" />
@@ -13,9 +13,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Type-Browser%20Extension-blue?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Manifest-MV3-purple?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/Providers-7%20AI%20Platforms-emerald?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Architecture-Observability%20Layer-emerald?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Privacy-100%25%20Local-yellow?style=for-the-badge" />
-  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Telemetry-Zero-green?style=for-the-badge" />
 </p>
 
 [![GitHub](https://img.shields.io/badge/GitHub-Source_Code-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/SniperRavan/trace)
@@ -24,56 +24,40 @@
 
 ---
 
-## 📸 Preview
+## ✦ Core Philosophy & Observability Model
 
-| Floating Ambient HUD Overlay | Expanded Analytics Dashboard |
-| :--------------------------: | :--------------------------: |
-| ![Floating Overlay](assets/preview-overlay.png) | ![Expanded Dashboard](assets/preview-dashboard.png) |
+Trace is a local ambient observability layer that runs entirely within your browser with **zero cloud telemetry, zero external APIs, and zero user account dependencies**.
 
-| Toolbar Popup Control Panel | Session & Weekly Rate Limits |
-| :-------------------------: | :-------------------------: |
-| ![Toolbar Popup](assets/preview-popup.png) | ![Session & Weekly Limits](assets/preview-limits.png) |
+Instead of overclaiming private account token allowances or calculating fake remaining quotas, Trace strictly separates token telemetry into three independent measurements:
 
----
-
-## ✦ About
-
-**Trace** monitors your daily token and quota consumption across core AI providers — **ChatGPT**, **Claude**, and **Gemini** — entirely locally. No cloud, no telemetry, no accounts.
-
-The design goal is to feel like a native part of the browser — something you glance at, not something you manage. Visually inspired by **Arc Browser**, **Raycast**, and **macOS system overlays**. Aesthetically rooted in Linux terminal rice color schemes (**Catppuccin**, **Nord**, **Tokyo Night**, **Gruvbox**, **Dracula**, **Everforest**).
+| Measurement | Method | Meaning & Confidence |
+| :--- | :--- | :--- |
+| **Visible Prompt / Response** | Model-specific tokenizer / heuristic | Tokens calculated from text visible to the extension (`estimated`) |
+| **Server-Reported Request Usage** | Native API / RPC payload extraction | Exact token counts returned in server headers or payloads (`exact`) |
+| **Account Quota & Limit Status** | Plan Policy detection & server reset metadata | Provider-controlled compute/message allowance (`dynamic / unavailable`) |
 
 ---
 
-## ✨ Core Features
+## ✨ Key Architectural Features
 
-- **🌐 Expanded Manifest V3 Platform Support** — Focused high-precision tracking for **Claude**, **ChatGPT**, and **Gemini** (with architecture ready for DeepSeek, Grok, Perplexity, and Meta AI).
-- **🎨 Official Vector Brand Icons** — Embedded SVG vector logos directly from `assets/Ai's-Image/` for Claude, OpenAI (ChatGPT), and Gemini for 0ms rendering and authentic branding.
-- **⚡ Independent Per-Provider Plan Tier Auto-Detection** — Automatically detects and manages subscription tiers (**Free**, **Pro/Plus**, **Team**, **Enterprise**) independently for each AI provider without global overwrites.
-- **🟢 Active Tab Auto-Routing & Indicator** — Floating HUD dynamically routes active provider indicators and expands directly to the currently active provider's dashboard (`claude.ai` → Claude, `chatgpt.com` → ChatGPT, `gemini.google.com` → Gemini).
-- **🛡️ Open-Mode Shadow DOM Isolation & Security** — Attached directly to `<body>` on provider tabs with zero CSS leakage and DOMPurify SVG sanitization.
-- **📊 Dual Session & Weekly Limit Tracking** — Live tracking for both session rate limits (e.g. 5-hour window) and weekly cumulative consumption with reset countdowns.
-- **⚡ Real-Time Network Interceptor & SSE Stream Counting** — MAIN world network hook intercepting fetch/XHR streams with live streaming token ticks via `window.postMessage`.
-- **🚨 Automated 429 Rate-Limit & Reset Header Parsing** — Intercepts HTTP 429 rate limit errors and extracts server reset timestamps (`resets_at`, `retry-after`, `x-ratelimit-reset-requests`) for Claude, ChatGPT, and Gemini.
-- **⚡ Per-Message Conversation Token Caching** — High-performance message fingerprint caching (`TokenCache`) preventing redundant token calculations during continuous streaming.
-- **⏱️ Context Window & Prompt Cache Timer** — Live mini context window limit bars (e.g., 200k / 128k / 1M tokens) and 5-minute prompt cache TTL expiration countdowns.
-- **🧮 Per-Provider Tokenization Engine** — Tailored tokenizer calculations for OpenAI (cl100k BPE), Anthropic (Claude), and Google (Gemini RPC clean parsing) with CJK and code density awareness.
-- **🎛️ Custom Glassmorphic Icon Dropdowns** — Sleek dropdown UI for plan tiers and rice color themes with inline icons.
-- **💾 CSV & JSON Data Export** — One-click usage history backup and rate limit threshold alert tracking.
-- **🔒 Local-Only & Privacy First** — Zero tracking, zero telemetry.
-
----
-
-## 🛠️ Tech Stack
-
-| Layer        | Technology                  | Why                                      |
-|--------------|-----------------------------|------------------------------------------|
-| UI           | React 19 + TypeScript 5.7   | Modern component model, strict type safety |
-| Build        | Vite 6                      | Lightning fast multi-bundle builds       |
-| Styling      | Tailwind CSS + CSS vars     | Utility classes + Shadow DOM tokens      |
-| State        | Zustand 5                   | React 19-native lightweight state        |
-| Tokenizer    | gpt-tokenizer + Per-Provider| Exact BPE & tailored provider estimators |
-| Security     | DOMPurify + Origin Scope    | SAST hardened SVG & postMessage sandbox  |
-| Isolation    | Shadow DOM (`open` mode)    | Zero CSS bleed between overlay and page  |
+- **🧮 Multi-Token Classification** — Tracks distinct token categories for modern LLMs:
+  - `inputTokens` — Raw prompt tokens
+  - `outputTokens` — Visible generation tokens
+  - `reasoningTokens` — Hidden thinking tokens (o1, o3-mini, Gemini Thinking)
+  - `cachedInputTokens` — Reused prompt cache tokens (Anthropic / Gemini prompt caching)
+  - `cacheCreationTokens` — Prompt cache creation tokens
+- **🏷️ Honest Labeling & Plan Policy** — Replaces synthetic quota multipliers with real **Plan Policy** metadata:
+  - Distinguishes quota types: `messages`, `compute`, `tokens`, or `unknown`.
+  - Shows dynamic rolling window countdowns (e.g. 3h/5h sliding resets).
+  - Displays *"Quota: Provider dynamic"* instead of inventing an imaginary token ceiling.
+- **🛡️ Hardened Security & Nonce Handshake** — Runs the transport hook in the page's `MAIN` execution world and bridges across to the isolated content script:
+  - Cryptographic per-session nonce validation on every message.
+  - Strict payload sanitization (rejects unexpected keys, out-of-bound numbers, and oversized strings).
+  - Instant text redaction after token counting (never persists raw prompts or responses).
+  - Deterministic `eventId` deduplication via `sha256` hashing to prevent duplicate counting on React re-renders or stream reconnects.
+- **⏱️ Conversation Context Window Tracking** — Live gauge showing active conversation token load against the model's actual context window (e.g., 128k for GPT-4o, 200k for Claude 3.5/3.7, 1M for Gemini).
+- **🔒 Scope & Local Backup** — Explicit scope: **This browser profile only**. Includes one-click encrypted JSON and CSV export/import for manual cross-device migration without cloud sync.
+- **🎨 Linux Terminal Rice Aesthetics** — Built-in support for beloved developer themes (**Catppuccin**, **Nord**, **Tokyo Night**, **Gruvbox**, **Dracula**, **Everforest**, **Liquid Glass**).
 
 ---
 
@@ -82,21 +66,20 @@ The design goal is to feel like a native part of the browser — something you g
 ```text
 trace/
 ├── src/
-│   ├── background/       # Service worker — alarms, storage relay, favicon proxy
-│   ├── content/          # Content scripts — Shadow DOM injection, adapters
-│   │   ├── adapters/     # Per-provider adapters (ChatGPT, Claude, Gemini, Grok, Perplexity, DeepSeek, Meta AI)
+│   ├── background/       # MV3 service worker (alarms, hourly reset check, logo proxy)
+│   ├── content/          # Isolated world content scripts & Shadow DOM mount
+│   │   ├── adapters/     # Provider adapters (ChatGPT, Claude, Gemini, Grok, etc.)
 │   │   ├── interceptor.ts# MAIN world fetch/XHR/WebSocket network hook
 │   │   └── providerDetect.ts # Hostname → ProviderId router
-│   ├── overlay/          # Floating ambient bubble + Compact & Expanded Panels (React, Shadow DOM)
+│   ├── overlay/          # Floating ambient HUD & Expanded Dashboard (React, Shadow DOM)
 │   ├── popup/            # Extension toolbar popup dashboard (React)
-│   ├── providers/        # Provider metadata + 2-layer logo system (SVG + Favicon CDN)
-│   ├── storage/          # Zustand store + chrome.storage.local sync & tier presets
-│   ├── tracking/         # Token estimator engine (gpt-tokenizer + fallback ratio)
-│   └── components/ui/    # Shared UI components
+│   ├── providers/        # Provider metadata + 2-layer vector logo system
+│   ├── storage/          # Zustand store + chrome.storage.local sync & PlanPolicy
+│   ├── tracking/         # Token estimator engine (gpt-tokenizer + calibrated ratios)
+│   └── components/ui/    # Reusable glassmorphic UI components
 ├── public/
 │   └── manifest.json     # Chrome MV3 manifest
-├── references/           # Technical blueprint reference projects
-└── dist/                 # Built production extension (load unpacked in Chrome)
+└── dist/                 # Compiled production extension
 ```
 
 ---
@@ -105,11 +88,12 @@ trace/
 
 | Layer        | Technology                  | Why                                      |
 |--------------|-----------------------------|------------------------------------------|
-| UI           | React 18 + TypeScript       | Component model, strict type safety      |
-| Build        | Vite 5                      | Fast builds, multi-entry CSS inline      |
-| Styling      | Tailwind CSS + CSS vars     | Utility classes + Shadow DOM tokens      |
-| State        | Zustand                     | Minimal, no boilerplate                  |
-| Tokenizer    | gpt-tokenizer               | Exact BPE token counting                 |
+| UI           | React 19 + TypeScript 5.7   | Modern component model, strict type safety |
+| Build        | Vite 6                      | Multi-bundle builds, inline CSS          |
+| Styling      | Tailwind CSS + CSS vars     | Scoped tokens inside Shadow DOM          |
+| State        | Zustand 5                   | Multi-tab sync via chrome.storage.local  |
+| Tokenizer    | gpt-tokenizer (cl100k_base) | Exact BPE token counting                 |
+| Security     | Session Nonces + Event IDs  | Untrusted MAIN-world bridge isolation    |
 | Isolation    | Shadow DOM (`open` mode)    | Zero CSS bleed between overlay and page  |
 
 ---
@@ -131,74 +115,30 @@ cd trace
 # 2. Install dependencies
 npm install
 
-# 3. Run type checking & unit tests
-npm run type-check
+# 3. Run unit tests & verification suite
 npm test
 
 # 4. Build production extension assets
 npm run build
 ```
 
-### 🧩 How to Load & Use Trace in Your Browser (Developer Mode)
+---
 
-Since Trace is currently loaded locally as a developer build, follow these step-by-step instructions to load it into your browser:
+### 🧩 How to Load & Use Trace in Your Browser
 
-#### 🌐 For Chrome & Chromium Browsers (Brave, Edge, Arc, Opera, Vivaldi, Zen)
-
-1. **Build the extension package**:
-   Make sure you have compiled the latest build:
+1. **Build the extension**:
    ```bash
    npm run build
    ```
-   This generates the production bundle inside the `dist/` directory.
-
 2. **Open Extensions Management**:
-   - Open your browser and navigate to `chrome://extensions` (or `edge://extensions` in Microsoft Edge, `brave://extensions` in Brave).
-   - Alternatively, click the **Extensions Menu** (puzzle piece icon 🧩) in your toolbar and select **Manage Extensions**.
-
+   - In Chrome/Brave/Edge, navigate to `chrome://extensions`.
 3. **Enable Developer Mode**:
-   - Locate the **Developer mode** toggle switch in the top-right corner of the Extensions page and turn it **ON** 🟢.
-
+   - Turn **Developer mode** toggle switch **ON** in the top-right corner.
 4. **Load the `dist` Folder**:
-   - Click the **Load unpacked** button that appears in the top-left toolbar.
-   - In the file picker dialog, navigate to the `trace` project folder and select the **`dist`** directory (e.g. `/path/to/trace/dist`).
-   - Click **Select Folder** (or **Open**).
-
-5. **Verify Installation**:
-   - You should now see **Trace ⚡** listed under your installed extensions.
-   - Click the extension puzzle icon 🧩 in your browser toolbar and pin **Trace** for quick access.
-
-6. **Start Tracking**:
-   - Open any supported AI provider tab:
-     - 🟢 **ChatGPT**: [chatgpt.com](https://chatgpt.com)
-     - 🟠 **Claude**: [claude.ai](https://claude.ai)
-     - 🟣 **Gemini**: [gemini.google.com](https://gemini.google.com)
-   - The ambient HUD overlay will automatically appear in the bottom corner of the web page, quiet and isolated!
-
----
-
-#### 🦊 For Mozilla Firefox
-
-1. **Build for Firefox**:
-   ```bash
-   npm run build:firefox
-   ```
-2. Open `about:debugging#/runtime/this-firefox` in Firefox.
-3. Click **Load Temporary Add-on...**
-4. Select `manifest.json` inside the generated `dist/` directory.
-
----
-
-## 📚 Inspirations & References
-
-Trace builds upon technical blueprints, rate-limiting insights, and tokenization techniques pioneered by open-source projects. Special thanks and credit to:
-
-1. **[Claude Usage Tracker Extension](https://github.com/lugia19/Claude-Usage-Extension)** (`references/Claude-Usage-Extension` by lugia19):
-   - Provided blueprints for native Claude organization endpoint querying (`/api/organizations/{orgId}/usage`), rate limit watching (`message_limit`, HTTP 429 status handling), and prompt caching TTL lifetime mechanics.
-2. **[Claude Counter](https://github.com/she-llac/claude-counter)** (`references/claude-counter`):
-   - Inspired live SSE `message_limit` utilization fraction parsing, 200k context limit visualization, and isolated world message bridging (`window.postMessage` bridge model).
-3. **[gpt-tokenizer](https://github.com/niieani/gpt-tokenizer)** (`references/gpt-tokenizer` by niieani):
-   - Provided the high-performance BPE tokenizer engine (`cl100k_base` and `o200k_base`) for exact token calculations.
+   - Click **Load unpacked** and select the `trace/dist` directory.
+5. **Start Tracking**:
+   - Navigate to [ChatGPT](https://chatgpt.com), [Claude](https://claude.ai), or [Gemini](https://gemini.google.com).
+   - Trace will quietly observe and display local metrics in the ambient HUD overlay.
 
 ---
 
@@ -211,5 +151,3 @@ Trace builds upon technical blueprints, rate-limiting insights, and tokenization
 <div align="center">
   <sub>Built with 💚 by <a href="https://github.com/sniperravan">SniperRavan</a> — An ambient, local-first AI usage companion.</sub>
 </div>
-
-<img src="https://capsule-render.vercel.app/api?type=waving&color=10b981&height=80&section=footer" width="100%" />

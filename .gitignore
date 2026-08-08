@@ -96,10 +96,14 @@ tmp/
 uploads/
 
 ############################
-# 🔹 Markdown Files (Ignore all except README.md)
+# 🔹 Markdown Files (Track project documentation)
 ############################
 *.md
 !README.md
+!ARCHITECTURE_UPGRADE.md
+!DECISIONS.md
+!PROGRESS.md
+!SUMMARY_OF_FIXES.md
 
 ############################
 # 🔹 References
