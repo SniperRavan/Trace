@@ -50,14 +50,30 @@ Instead of overclaiming private account token allowances or calculating fake rem
   - Distinguishes quota types: `messages`, `compute`, `tokens`, or `unknown`.
   - Shows dynamic rolling window countdowns (e.g. 3h/5h sliding resets).
   - Displays *"Quota: Provider dynamic"* instead of inventing an imaginary token ceiling.
+- **🚩 Independent Feature Flags** — Allows users to independently enable or pause tracking for ChatGPT, Claude, and Gemini in real-time.
 - **🛡️ Hardened Security & Nonce Handshake** — Runs the transport hook in the page's `MAIN` execution world and bridges across to the isolated content script:
   - Cryptographic per-session nonce validation on every message.
   - Strict payload sanitization (rejects unexpected keys, out-of-bound numbers, and oversized strings).
   - Instant text redaction after token counting (never persists raw prompts or responses).
   - Deterministic `eventId` deduplication via `sha256` hashing to prevent duplicate counting on React re-renders or stream reconnects.
 - **⏱️ Conversation Context Window Tracking** — Live gauge showing active conversation token load against the model's actual context window (e.g., 128k for GPT-4o, 200k for Claude 3.5/3.7, 1M for Gemini).
-- **🔒 Scope & Local Backup** — Explicit scope: **This browser profile only**. Includes one-click encrypted JSON and CSV export/import for manual cross-device migration without cloud sync.
+- **🔒 Scope & Local Backup** — Explicit scope: **This browser profile only**. Includes one-click encrypted JSON and CSV export/import (size-capped at 2MB with schema versioning) for manual cross-device migration without cloud sync.
+- **📦 Dual Browser Support** — Full Manifest V3 compatibility with Chrome and Firefox (`browser_specific_settings`).
 - **🎨 Linux Terminal Rice Aesthetics** — Built-in support for beloved developer themes (**Catppuccin**, **Nord**, **Tokyo Night**, **Gruvbox**, **Dracula**, **Everforest**, **Liquid Glass**).
+
+---
+
+## 🛡️ Production Release Gates
+
+Trace enforces 10 strict pre-release validation gates before deployment (detailed in [`RELEASE_GATES.md`](file:///home/sniperravan/Desktop/trace/RELEASE_GATES.md)):
+1. **Automated CI/CD**: Full type checking, unit testing, and production builds on GitHub Actions.
+2. **Dual Manifest Validation**: Validated for Chrome MV3 and Firefox AMO.
+3. **Zero-Knowledge Privacy Guarantee**: Zero prompts, responses, session cookies, or account emails stored.
+4. **Graceful Degradation**: Unknown models and interrupted streams degrade safely to labeled estimates.
+5. **Schema Versioning**: Backwards-compatible `v2.0` schema with migration runners.
+
+> **Official Release Label:**  
+> *"Trace is a local browser-profile observability extension for AI conversations. It reports provider-supplied usage when exposed and otherwise provides clearly labeled local estimates. It does not promise universal account quota measurement, cross-device tracking, billing accuracy, or mobile-app coverage."*
 
 ---
 
