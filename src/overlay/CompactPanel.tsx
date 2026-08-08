@@ -90,6 +90,11 @@ function ProviderRow({ id }: { id: ProviderId }) {
               exact
             </span>
           )}
+          {state.adapterHealth?.status === 'needs_review' && (
+            <span style={{ fontSize: 7, padding: '1px 3px', borderRadius: 2, background: 'rgba(239,68,68,0.18)', color: '#f87171' }}>
+              drift
+            </span>
+          )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, color: 'rgba(255,255,255,0.4)', fontVariantNumeric: 'tabular-nums' }}>
           <span>{formatTokens(observedTokens)} tok</span>

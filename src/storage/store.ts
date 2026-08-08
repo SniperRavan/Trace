@@ -73,11 +73,12 @@ export interface UsageRecord {
   observedAt: number
 }
 
-export interface HistoryPoint {
-  timestamp: number
-  observedTokens: number
-  contextTokens: number
-  serverExact: boolean
+export interface AdapterHealth {
+  lastSuccessfulParse: number
+  lastFailureReason?: string
+  consecutiveFailures: number
+  protocolVersion: string
+  status: 'operational' | 'degraded' | 'needs_review'
 }
 
 export interface ProviderState {
@@ -103,6 +104,7 @@ export interface ProviderState {
   isActive: boolean
   history: HistoryPoint[]
   seenEventIds: string[]
+  adapterHealth: AdapterHealth
   // Legacy session fields maintained for backwards UI compatibility
   sessionUsage: {
     used: number
@@ -214,6 +216,12 @@ export function defaultProvider(id: ProviderId, tier: SubscriptionTier = 'pro'):
     isActive: false,
     history: [],
     seenEventIds: [],
+    adapterHealth: {
+      lastSuccessfulParse: Date.now(),
+      consecutiveFailures: 0,
+      protocolVersion: '2.0',
+      status: 'operational',
+    },
     sessionUsage: {
       used: 0,
       total: 40_000,
@@ -261,6 +269,7 @@ export function migrateStorage(raw: any): Record<ProviderId, ProviderState> {
         planPolicy: s.planPolicy || def.planPolicy,
         seenEventIds: Array.isArray(s.seenEventIds) ? s.seenEventIds.slice(-MAX_SEEN_EVENTS) : [],
         history: Array.isArray(s.history) ? s.history.slice(-MAX_HISTORY_POINTS) : [],
+        adapterHealth: s.adapterHealth || def.adapterHealth,
       }
     }
   })
@@ -426,8 +435,7 @@ export interface TraceStore {
   setTier: (tier: SubscriptionTier) => void
   setProviderTier: (id: ProviderId, tier: SubscriptionTier) => void
   setActiveModel: (id: ProviderId, modelName: string, contextLimit?: number) => void
-  setCacheExpiry: (id: ProviderId, expiresAt: number) => void
-  checkResets: () => void
+  reportAdapterStatus: (id: ProviderId, success: boolean, reason?: string) => void
   refreshAnalytics: (id: ProviderId) => void
   importDataFromJSON: (jsonStr: string) => { success: boolean; importedCount: number; error?: string }
 }
@@ -778,6 +786,44 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
       set({ providers })
       get().persistToStorage()
     }
+  },
+
+  reportAdapterStatus: (id, success, reason) => {
+    set(state => {
+      const p = state.providers[id]
+      if (!p) return state
+      const current = p.adapterHealth || {
+        lastSuccessfulParse: Date.now(),
+        consecutiveFailures: 0,
+        protocolVersion: '2.0',
+        status: 'operational',
+      }
+      let updated: AdapterHealth
+      if (success) {
+        updated = {
+          ...current,
+          lastSuccessfulParse: Date.now(),
+          consecutiveFailures: 0,
+          lastFailureReason: undefined,
+          status: 'operational',
+        }
+      } else {
+        const failures = current.consecutiveFailures + 1
+        updated = {
+          ...current,
+          consecutiveFailures: failures,
+          lastFailureReason: reason || 'Schema mismatch or stream interruption',
+          status: failures >= 3 ? 'needs_review' : 'degraded',
+        }
+      }
+      return {
+        providers: {
+          ...state.providers,
+          [id]: { ...p, adapterHealth: updated },
+        },
+      }
+    })
+    scheduleWrite(get)
   },
 
   refreshAnalytics: (id) => {

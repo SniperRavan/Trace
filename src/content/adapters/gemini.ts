@@ -42,6 +42,7 @@ export class GeminiAdapter implements ProviderAdapter {
 
       if (record.totalTokens && record.totalTokens > 0) {
         useTraceStore.getState().recordUsage(record, detail.eventId)
+        useTraceStore.getState().reportAdapterStatus('gemini', true)
       }
     })
 

@@ -74,6 +74,7 @@ export class ClaudeAdapter implements ProviderAdapter {
 
       if (record.totalTokens && record.totalTokens > 0) {
         useTraceStore.getState().recordUsage(record, detail.eventId)
+        useTraceStore.getState().reportAdapterStatus('claude', true)
       }
     })
 

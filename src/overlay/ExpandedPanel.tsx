@@ -262,6 +262,12 @@ export function ExpandedPanel() {
             </span>
           </div>
 
+          {state.adapterHealth?.status === 'needs_review' && (
+            <div style={{ padding: '5px 8px', background: 'rgba(239,68,68,0.12)', border: '0.5px solid rgba(239,68,68,0.3)', borderRadius: 6, fontSize: 8, color: '#f87171', marginBottom: 6 }}>
+              ⚠️ Protocol drift detected ({state.adapterHealth.lastFailureReason || 'Schema change'}). Falling back to safe local estimates.
+            </div>
+          )}
+
           <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: '-0.5px', marginBottom: 6 }}>
             {formatTokens(observedTokens)} <span style={{ fontSize: 11, fontWeight: 400, color: 'rgba(255,255,255,0.4)' }}>tokens</span>
           </div>

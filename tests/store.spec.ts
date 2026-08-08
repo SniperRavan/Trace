@@ -113,4 +113,56 @@ describe('Trace Store & Observability Engine', () => {
     expect(importResult.success).toBe(true)
     expect(importResult.importedCount).toBe(3)
   })
+
+  it('should toggle provider tracking independently via feature flags', () => {
+    const store = useTraceStore.getState()
+    expect(store.providers.chatgpt.enabled).toBe(true)
+
+    // Toggle off ChatGPT
+    store.toggleProviderEnabled('chatgpt')
+    expect(useTraceStore.getState().providers.chatgpt.enabled).toBe(false)
+
+    // When disabled, usage events for ChatGPT should be discarded
+    const beforeTokens = useTraceStore.getState().providers.chatgpt.observedTokens
+    const applied = store.recordUsage({
+      provider: 'chatgpt',
+      totalTokens: 500,
+      source: 'tokenizer',
+      confidence: 'estimated',
+      observedAt: Date.now(),
+    }, 'event-while-disabled')
+
+    expect(applied).toBe(false)
+    expect(useTraceStore.getState().providers.chatgpt.observedTokens).toBe(beforeTokens)
+
+    // Re-enable
+    store.toggleProviderEnabled('chatgpt')
+    expect(useTraceStore.getState().providers.chatgpt.enabled).toBe(true)
+  })
+
+  it('should track local adapter health and flag protocol drift after 3 failures', () => {
+    const store = useTraceStore.getState()
+    expect(store.providers.claude.adapterHealth.status).toBe('operational')
+
+    // Report success
+    store.reportAdapterStatus('claude', true)
+    expect(useTraceStore.getState().providers.claude.adapterHealth.consecutiveFailures).toBe(0)
+    expect(useTraceStore.getState().providers.claude.adapterHealth.status).toBe('operational')
+
+    // Report failures
+    store.reportAdapterStatus('claude', false, 'Missing usage field in SSE')
+    expect(useTraceStore.getState().providers.claude.adapterHealth.status).toBe('degraded')
+
+    store.reportAdapterStatus('claude', false, 'Missing usage field in SSE')
+    store.reportAdapterStatus('claude', false, 'Missing usage field in SSE')
+
+    // After 3 failures, status should be 'needs_review'
+    expect(useTraceStore.getState().providers.claude.adapterHealth.status).toBe('needs_review')
+    expect(useTraceStore.getState().providers.claude.adapterHealth.lastFailureReason).toContain('Missing usage field')
+
+    // Recovery on next success
+    store.reportAdapterStatus('claude', true)
+    expect(useTraceStore.getState().providers.claude.adapterHealth.status).toBe('operational')
+    expect(useTraceStore.getState().providers.claude.adapterHealth.consecutiveFailures).toBe(0)
+  })
 })
