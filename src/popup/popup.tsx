@@ -2,23 +2,27 @@
  * src/popup/popup.tsx
  *
  * Trace Extension Popup.
- * Provides quick overview of observed usage, context window loads,
- * plan policy selection, and local JSON backup/restore.
+ * Features:
+ * - Top header with TRACE [Plan Tier] and today's total tokens
+ * - Plan Policy and Theme selectors
+ * - Dual-bar provider cards matching the HUD aesthetics
+ * - Local Profile Scope banner and JSON Export/Import
  */
 
-import { useEffect, useState, useRef } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   useTraceStore,
   PROVIDER_IDENTITY,
   ALL_PROVIDERS,
-  getContextPercent,
+  getSessionPercent,
+  getWeeklyPercent,
   getObservedTokens,
-  getQuotaDisplay,
   exportDataAsCSV,
   exportDataAsJSON,
   type SubscriptionTier,
   type ThemeName,
+  type ProviderId,
 } from '@/storage/store'
 import { formatTokens, formatResetTime } from '@/tracking/estimator'
 import { ProviderLogo } from '@/components/ui/ProviderLogo'
@@ -42,23 +46,34 @@ const THEMES: { id: ThemeName; label: string; icon: string }[] = [
   { id: 'liquidglass', label: 'Liquid Glass', icon: '🌊' },
 ]
 
+function useCountdown(resetAt?: number): string {
+  const [text, setText] = useState(() => (resetAt ? formatResetTime(resetAt) : 'dynamic'))
+  useEffect(() => {
+    if (!resetAt) {
+      setText('dynamic')
+      return
+    }
+    const update = () => setText(formatResetTime(resetAt))
+    update()
+    const iv = setInterval(update, 1000)
+    return () => clearInterval(iv)
+  }, [resetAt])
+  return text
+}
+
 function PopupApp() {
   const store = useTraceStore()
-  const [loaded, setLoaded] = useState(false)
   const [importStatus, setImportStatus] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    store.init().then(() => setLoaded(true))
+    store.init().catch(console.error)
   }, [])
 
-  if (!loaded) {
-    return (
-      <div style={{ padding: 20, color: 'rgba(255,255,255,0.4)', fontSize: 12, textAlign: 'center', background: '#0d0f14', width: 330 }}>
-        Loading Trace...
-      </div>
-    )
-  }
+  const totalObserved = ALL_PROVIDERS.reduce(
+    (sum, id) => sum + getObservedTokens(store.providers[id]),
+    0
+  )
 
   const handleExport = (format: 'json' | 'csv') => {
     const content = format === 'json' ? exportDataAsJSON(store.providers) : exportDataAsCSV(store.providers)
@@ -67,7 +82,7 @@ function PopupApp() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `trace-usage-backup.${format}`
+    a.download = `trace-backup-${new Date().toISOString().slice(0, 10)}.${format}`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -90,77 +105,114 @@ function PopupApp() {
   }
 
   return (
-    <div data-theme={store.currentTheme} style={{
-      width: 330,
-      padding: '16px',
-      background: 'var(--trace-bg-gradient, #0d0f14)',
-      color: 'var(--trace-text-primary, #ffffff)',
-      fontFamily: "'Inter', system-ui, sans-serif",
-      boxSizing: 'border-box',
-      border: '0.5px solid var(--trace-border-muted, rgba(255,255,255,0.12))',
-      borderRadius: 'var(--trace-panel-radius, 16px)',
-      backdropFilter: 'var(--trace-panel-blur, blur(20px))',
-      WebkitBackdropFilter: 'var(--trace-panel-blur, blur(20px))',
-      boxShadow: 'var(--trace-panel-shadow, 0 8px 32px rgba(0,0,0,0.5))',
-    }}>
+    <div
+      data-theme={store.currentTheme}
+      style={{
+        width: 340,
+        minHeight: 460,
+        background: 'var(--trace-bg-gradient, #111319)',
+        color: 'var(--trace-text-primary, #ffffff)',
+        fontFamily: "'Inter', system-ui, sans-serif",
+        padding: '16px',
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 12,
+      }}
+    >
       {/* Top Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, letterSpacing: '0.8px', color: '#ffffff', textTransform: 'uppercase' }}>
+            TRACE
+          </span>
+          <span style={{ fontSize: 9, fontWeight: 600, padding: '1.5px 6px', borderRadius: 4, background: 'rgba(255, 255, 255, 0.08)', color: 'rgba(255, 255, 255, 0.6)', textTransform: 'uppercase' }}>
+            {store.currentTier}
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }} />
+          <span style={{ fontSize: 11, color: 'rgba(255, 255, 255, 0.55)', fontWeight: 500 }}>
+            {formatTokens(totalObserved)} today
+          </span>
+        </div>
+      </div>
+
+      {/* Plan Tier & Theme Selectors */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <div>
-          <div style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.3px', color: '#ffffff' }}>Trace</div>
-          <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)' }}>Local AI usage observability</div>
+          <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, fontWeight: 600 }}>
+            PLAN POLICY
+          </div>
+          <CustomDropdown
+            label=""
+            value={store.currentTier}
+            options={TIERS}
+            onChange={val => store.setTier(val as SubscriptionTier)}
+          />
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(16,185,129,0.15)', padding: '4px 10px', borderRadius: 9999, border: '0.5px solid rgba(16,185,129,0.3)' }}>
-          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981' }} />
-          <span style={{ fontSize: 9, color: '#34d399', fontWeight: 600 }}>Local Profile</span>
+        <div>
+          <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4, fontWeight: 600 }}>
+            THEME
+          </div>
+          <CustomDropdown
+            label=""
+            value={store.currentTheme}
+            options={THEMES}
+            onChange={val => store.setTheme(val as ThemeName)}
+          />
         </div>
       </div>
 
-      {/* Plan Tier Selector */}
-      <div style={{ marginBottom: 12 }}>
-        <CustomDropdown
-          label="Detected Plan Policy"
-          value={store.currentTier}
-          options={TIERS}
-          onChange={val => store.setTier(val as SubscriptionTier)}
-        />
-      </div>
+      {/* Provider List with Dual Progress Bars */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.4)', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+          OBSERVED PROVIDERS
+        </div>
 
-      {/* Provider List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 12 }}>
-        <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.45)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2, fontWeight: 600 }}>Supported Providers</div>
         {ALL_PROVIDERS.map(id => {
           const p = store.providers[id]
-          const { name } = PROVIDER_IDENTITY[id]
-          const observed = getObservedTokens(p)
-          const ctxPct = getContextPercent(p)
-          const quota = getQuotaDisplay(p)
-          const isServerExact = p.lastRecord?.source === 'server' && p.lastRecord?.confidence === 'exact'
+          const { name, color } = PROVIDER_IDENTITY[id]
+          const sessionPct = getSessionPercent(p)
+          const weeklyPct = getWeeklyPercent(p)
+          const sessionWin = p.planPolicy?.windows?.find(w => w.name === 'session')
+          const weeklyWin = p.planPolicy?.windows?.find(w => w.name === 'weekly')
+          const sessionCountdown = useCountdown(sessionWin?.resetAt ?? p.sessionUsage?.resetAt)
+          const weeklyCountdown = useCountdown(weeklyWin?.resetAt ?? p.weeklyUsage?.resetAt)
 
           return (
-            <div key={id} style={{
-              background: 'rgba(255,255,255,0.03)',
-              border: '0.5px solid rgba(255,255,255,0.07)',
-              borderRadius: 10,
-              padding: '9px 12px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 4,
-            }}>
+            <div
+              key={id}
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '0.5px solid rgba(255, 255, 255, 0.07)',
+                borderRadius: 10,
+                padding: '9px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 5,
+              }}
+            >
+              {/* Row 1 */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <ProviderLogo provider={id} size={20} />
-                  <span style={{ fontSize: 12, fontWeight: 500 }}>{name}</span>
-                  <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <ProviderLogo provider={id} size={18} />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#ffffff' }}>{name}</span>
+                  <span style={{ fontSize: 8, padding: '1px 4px', borderRadius: 3, background: 'rgba(255, 255, 255, 0.06)', color: 'rgba(255, 255, 255, 0.4)' }}>
                     {p.activeModel}
                   </span>
-                  {isServerExact && (
-                    <span style={{ fontSize: 7, padding: '1px 3px', borderRadius: 2, background: 'rgba(16,185,129,0.15)', color: '#34d399' }}>
-                      exact
-                    </span>
-                  )}
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 9, fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ color: 'rgba(255, 255, 255, 0.35)' }}>S:</span>
+                  <strong style={{ color: '#ffffff' }}>{sessionPct}%</strong>
+                  <span style={{ color: 'rgba(255, 255, 255, 0.25)' }}>·</span>
+                  <span style={{ color: 'rgba(255, 255, 255, 0.35)' }}>W:</span>
+                  <strong style={{ color: '#818cf8' }}>{weeklyPct}%</strong>
                   <button
                     onClick={() => store.toggleProviderEnabled(id)}
                     style={{
+                      marginLeft: 4,
                       padding: '1px 5px',
                       borderRadius: 3,
                       border: p.enabled ? '0.5px solid rgba(16,185,129,0.35)' : '0.5px solid rgba(239,68,68,0.35)',
@@ -173,87 +225,95 @@ function PopupApp() {
                     {p.enabled ? 'On' : 'Off'}
                   </button>
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.9)' }}>
-                  {formatTokens(observed)} tok
-                </span>
               </div>
 
-              {/* Context bar */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
-                <div style={{ flex: 1, height: 3, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${Math.max(ctxPct, 1)}%`, background: ctxPct >= 80 ? '#f87171' : '#34d399' }} />
+              {/* Row 2: Dual Bars */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 2 }}>
+                <div>
+                  <div style={{ height: 3, background: 'rgba(255, 255, 255, 0.07)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.max(sessionPct, sessionPct > 0 ? 3 : 0)}%`, background: color, borderRadius: 3 }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: 'rgba(255, 255, 255, 0.3)', marginTop: 2 }}>
+                    <span>Session</span>
+                    <span>{sessionCountdown}</span>
+                  </div>
                 </div>
-                <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.35)', whiteSpace: 'nowrap' }}>
-                  Ctx: {ctxPct}%
-                </span>
-              </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: 'rgba(255,255,255,0.3)', marginTop: 1 }}>
-                <span>{quota.description}</span>
-                <span>Reset: {quota.resetAt ? formatResetTime(quota.resetAt) : 'dynamic'}</span>
+                <div>
+                  <div style={{ height: 3, background: 'rgba(255, 255, 255, 0.07)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.max(weeklyPct, weeklyPct > 0 ? 3 : 0)}%`, background: '#6366f1', borderRadius: 3 }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: 'rgba(255, 255, 255, 0.3)', marginTop: 2 }}>
+                    <span>Weekly</span>
+                    <span>{weeklyCountdown}</span>
+                  </div>
+                </div>
               </div>
             </div>
           )
         })}
       </div>
 
-      {/* Theme Selector */}
-      <div style={{ marginBottom: 12 }}>
-        <CustomDropdown
-          label="Interface Theme"
-          value={store.currentTheme}
-          options={THEMES}
-          onChange={val => store.setTheme(val as ThemeName)}
-        />
-      </div>
-
-      {/* Export & Import Actions */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-        <button
-          onClick={() => handleExport('json')}
-          style={{
-            flex: 1, padding: '7px 0', fontSize: 10, fontWeight: 500,
-            background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)',
-            border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 6,
-            cursor: 'pointer',
-          }}
-        >
-          Export JSON
-        </button>
-        <button
-          onClick={() => fileInputRef.current?.click()}
-          style={{
-            flex: 1, padding: '7px 0', fontSize: 10, fontWeight: 500,
-            background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.85)',
-            border: '0.5px solid rgba(255,255,255,0.12)', borderRadius: 6,
-            cursor: 'pointer',
-          }}
-        >
-          Import JSON
-        </button>
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          accept=".json"
-          style={{ display: 'none' }}
-        />
-      </div>
-
-      {importStatus && (
-        <div style={{ fontSize: 9, color: '#34d399', textAlign: 'center', marginBottom: 6 }}>
-          {importStatus}
+      {/* Scope Banner & Backup Buttons */}
+      <div style={{
+        marginTop: 'auto',
+        padding: '10px 12px',
+        background: 'rgba(0, 0, 0, 0.22)',
+        borderRadius: 10,
+        border: '0.5px solid rgba(255, 255, 255, 0.06)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}>
+        <div style={{ fontSize: 9, color: 'rgba(255, 255, 255, 0.4)' }}>
+          Scope: <strong style={{ color: '#ffffff' }}>This browser profile only</strong> (zero telemetry).
         </div>
-      )}
 
-      {/* Footer */}
-      <div style={{ borderTop: '0.5px solid rgba(255,255,255,0.08)', paddingTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 9, color: 'rgba(255,255,255,0.35)' }}>
-        <span>This browser profile only</span>
-        <span>Zero cloud telemetry</span>
+        {importStatus && (
+          <div style={{ fontSize: 9, color: '#34d399', fontWeight: 500 }}>
+            {importStatus}
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <input ref={fileInputRef} type="file" accept=".json" onChange={handleFileChange} style={{ display: 'none' }} />
+          <button
+            onClick={() => handleExport('json')}
+            style={{
+              padding: '5px 8px',
+              borderRadius: 6,
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '0.5px solid rgba(255, 255, 255, 0.12)',
+              color: '#ffffff',
+              fontSize: 10,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            Export JSON
+          </button>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              padding: '5px 8px',
+              borderRadius: 6,
+              background: 'rgba(255, 255, 255, 0.06)',
+              border: '0.5px solid rgba(255, 255, 255, 0.12)',
+              color: '#ffffff',
+              fontSize: 10,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            Import JSON
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
-const root = createRoot(document.getElementById('popup-root')!)
-root.render(<PopupApp />)
+const rootEl = document.getElementById('root')
+if (rootEl) {
+  createRoot(rootEl).render(<PopupApp />)
+}
