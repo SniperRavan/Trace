@@ -21,8 +21,8 @@ export class DeepSeekAdapter implements ProviderAdapter {
       let output = detail.outputTokens ?? 0
 
       if (!input && !output) {
-        if (detail.userText) input = countTokens(detail.userText)
-        if (detail.assistantText) output = countTokens(detail.assistantText)
+        if (detail.userText) input = countTokens(detail.userText, 'deepseek').count
+        if (detail.assistantText) output = countTokens(detail.assistantText, 'deepseek').count
       }
 
       const total = detail.totalTokens || input + output

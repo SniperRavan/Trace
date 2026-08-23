@@ -17,8 +17,8 @@ export class GrokAdapter implements ProviderAdapter {
       let outputTokens = detail.outputTokens ?? 0
 
       if (!inputTokens && !outputTokens) {
-        if (detail.userText) inputTokens = countTokens(detail.userText)
-        if (detail.assistantText) outputTokens = countTokens(detail.assistantText)
+        if (detail.userText) inputTokens = countTokens(detail.userText, 'grok').count
+        if (detail.assistantText) outputTokens = countTokens(detail.assistantText, 'grok').count
       }
 
       const totalTokens = detail.totalTokens || inputTokens + outputTokens

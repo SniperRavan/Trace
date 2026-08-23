@@ -17,8 +17,8 @@ export class PerplexityAdapter implements ProviderAdapter {
       let outputTokens = detail.outputTokens ?? 0
 
       if (!inputTokens && !outputTokens) {
-        if (detail.userText) inputTokens = countTokens(detail.userText)
-        if (detail.assistantText) outputTokens = countTokens(detail.assistantText)
+        if (detail.userText) inputTokens = countTokens(detail.userText, 'perplexity').count
+        if (detail.assistantText) outputTokens = countTokens(detail.assistantText, 'perplexity').count
       }
 
       const totalTokens = detail.totalTokens || inputTokens + outputTokens

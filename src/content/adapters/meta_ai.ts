@@ -21,8 +21,8 @@ export class MetaAdapter implements ProviderAdapter {
       let output = detail.outputTokens ?? 0
 
       if (!input && !output) {
-        if (detail.userText) input = countTokens(detail.userText)
-        if (detail.assistantText) output = countTokens(detail.assistantText)
+        if (detail.userText) input = countTokens(detail.userText, 'meta').count
+        if (detail.assistantText) output = countTokens(detail.assistantText, 'meta').count
       }
 
       const total = detail.totalTokens || input + output

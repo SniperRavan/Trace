@@ -81,6 +81,13 @@ export interface AdapterHealth {
   status: 'operational' | 'degraded' | 'needs_review'
 }
 
+export interface HistoryPoint {
+  timestamp: number
+  observedTokens: number
+  contextTokens: number
+  serverExact: boolean
+}
+
 export interface ProviderState {
   id: ProviderId
   enabled: boolean
@@ -437,6 +444,8 @@ export interface TraceStore {
   setActiveModel: (id: ProviderId, modelName: string, contextLimit?: number) => void
   reportAdapterStatus: (id: ProviderId, success: boolean, reason?: string) => void
   refreshAnalytics: (id: ProviderId) => void
+  setCacheExpiry: (id: ProviderId, expiresAt: number) => void
+  checkResets: () => void
   importDataFromJSON: (jsonStr: string) => { success: boolean; importedCount: number; error?: string }
 }
 
@@ -745,7 +754,7 @@ export const useTraceStore = create<TraceStore>((set, get) => ({
     scheduleWrite(get)
   },
 
-  setCacheExpiry: (id, expiresAt) => {
+  setCacheExpiry: (id: ProviderId, expiresAt: number) => {
     set(state => {
       const p = state.providers[id]
       if (!p) return state
